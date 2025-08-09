@@ -4,6 +4,8 @@ This module manages authentication against the Spotify Web API using the
 Client Credentials flow. It caches access tokens until shortly before they
 expire and exposes helpers for searching tracks and upserting track metadata
 into the local database.
+
+It also provides artist search helpers used for validation and autocomplete.
 """
 
 from __future__ import annotations
@@ -57,6 +59,9 @@ async def get_token() -> str:
     return access_token
 
 
+# -----------------------------------------------------------------------------
+# Track Search
+# -----------------------------------------------------------------------------
 async def search_tracks(query: str, limit: int = 5) -> list[dict[str, Any]]:
     """Search for tracks on Spotify by a free text query.
 
@@ -93,6 +98,44 @@ async def search_tracks(query: str, limit: int = 5) -> list[dict[str, Any]]:
     return tracks
 
 
+# -----------------------------------------------------------------------------
+# Artist Search (for validation & autocomplete)
+# -----------------------------------------------------------------------------
+async def search_artists(query: str, limit: int = 10) -> list[dict[str, Any]]:
+    """Search artists on Spotify.
+
+    Returns a list of dicts with at least: {"id": str, "name": str, "popularity": int}
+    """
+    if not query.strip():
+        return []
+    token = await get_token()
+    session = await _get_session()
+    params = {"q": query, "type": "artist", "limit": limit}
+    headers = {"Authorization": f"Bearer {token}"}
+    async with session.get("https://api.spotify.com/v1/search", params=params, headers=headers) as resp:
+        resp.raise_for_status()
+        data = await resp.json()
+
+    items = (data.get("artists", {}) or {}).get("items", []) or []
+    results: list[dict[str, Any]] = []
+    for a in items:
+        results.append({
+            "id": a["id"],
+            "name": a["name"],
+            "popularity": int(a.get("popularity", 0)),
+        })
+    return results
+
+
+async def get_canonical_artist(query: str) -> dict[str, Any] | None:
+    """Return the best matching artist (first result) or None if not found."""
+    results = await search_artists(query, limit=1)
+    return results[0] if results else None
+
+
+# -----------------------------------------------------------------------------
+# Track Upsert
+# -----------------------------------------------------------------------------
 async def upsert_track(track_id: str, title: str, artist_name: str, url: str) -> None:
     """Insert or update a track in the local database.
 
