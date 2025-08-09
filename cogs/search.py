@@ -1,5 +1,44 @@
-Hello
-World                rows2 = await db.fetch_all(
+"""Cog implementing search and trading related commands.
+
+This cog provides commands for finding owners of a specific Epic track and for
+matching potential trading partners based on a user's Epic collection and
+wishes. It also exposes autocomplete helpers for tracks and artists that
+are shared with the profile cog.
+"""
+
+from __future__ import annotations
+
+import discord
+from discord import app_commands
+from discord.ext import commands
+
+from typing import Optional, List
+
+from ..core import db, util
+
+
+class SearchCog(commands.Cog):
+    def __init__(self, bot: commands.Bot) -> None:
+        self.bot = bot
+
+    # Autocomplete helpers (copied from ProfileCog for reuse)
+    async def autocomplete_tracks(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
+        term = (current or "").strip()
+        suggestions: list[tuple[str, str]] = []
+        if term:
+            rows = await db.fetch_all(
+                """
+                SELECT track_id, title, artist_name
+                FROM tracks
+                WHERE title LIKE ? OR artist_name LIKE ?
+                ORDER BY artist_name COLLATE NOCASE ASC, title COLLATE NOCASE ASC
+                LIMIT 15
+                """,
+                (term + "%", term + "%"),
+            )
+            suggestions += [(r["track_id"], f"{r['artist_name']} – {r['title']}") for r in rows]
+            if len(suggestions) < 25:
+                rows2 = await db.fetch_all(
                     """
                     SELECT track_id, title, artist_name
                     FROM tracks
@@ -84,7 +123,6 @@ World                rows2 = await db.fetch_all(
                 "WHERE ue.track_id IN (" + placeholder + ") AND ue.user_id <> ?"
             )
             rows = await db.fetch_all(query, (*wish_ids, user_id))
-            # Group by user; we can list all
             have_what_i_want = rows
         # Who wants what I have
         want_what_i_have = []
@@ -102,7 +140,6 @@ World                rows2 = await db.fetch_all(
             color=discord.Color.green(),
         )
         if have_what_i_want:
-            # We could group by user, but simple listing is fine.
             lines = []
             for row in have_what_i_want[:20]:
                 lines.append(f"<@{row['user_id']}> — {row['artist_name']} – {row['title']} (# {row['epic_number']})")
@@ -118,4 +155,4 @@ World                rows2 = await db.fetch_all(
             embed.add_field(name="Sie suchen, was du besitzt", value="\n".join(lines) + more, inline=False)
         else:
             embed.add_field(name="Sie suchen, was du besitzt", value="Keine Treffer", inline=False)
-   await interaction.response.send_message(embed=embed, ephemeral=(user is not None and user.id != interaction.user.id))
+        await interaction.response.send_message(embed=embed, ephemeral=(user is not None and user.id != interaction.user.id))
