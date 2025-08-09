@@ -359,16 +359,13 @@ class ProfileCog(commands.Cog):
         try:
             artist_id_int = int(artist)
             row = await db.fetch_one("SELECT name FROM artists WHERE artist_id=?", (artist_id_int,))
-            if row:
-                artist_name = row["name"]
-            else:
-                artist_name = None
+            if row is None:
+                await interaction.response.send_message("Künstler nicht gefunden.", ephemeral=True)
+                return
+            artist_name = row["name"]
         except ValueError:
             artist_name = artist
             artist_id_int = None
-        if artist_name is None and artist_id_int is None:
-            await interaction.response.send_message("Künstler nicht gefunden.", ephemeral=True)
-            return
         # Ensure artist exists and get its ID
         if artist_id_int is None:
             # Insert new artist
