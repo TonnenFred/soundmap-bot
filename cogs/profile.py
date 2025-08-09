@@ -359,6 +359,43 @@ class ProfileCog(commands.Cog):
         )
         await interaction.response.send_message(f"✅ Lieblingskünstler hinzugefügt: **{canonical_name}**.", ephemeral=True)
 
+    # ---------- NEW: remove favourite artist ----------
+    @app_commands.command(name="delartist", description="Entferne einen Lieblingskünstler")
+    @app_commands.autocomplete(artist=autocomplete_artists)
+    async def delartist(self, interaction: discord.Interaction, artist: str) -> None:
+        user_id = str(interaction.user.id)
+        await self.ensure_user(user_id)
+
+        # Spotify-Validierung & Kanonisierung
+        sp = await spotify.get_canonical_artist(artist)
+        if not sp:
+            await interaction.response.send_message("Künstler nicht bei Spotify gefunden.", ephemeral=True)
+            return
+        canonical_name = sp["name"]
+
+        # Artist-ID nachschlagen
+        row = await db.fetch_one("SELECT artist_id FROM artists WHERE name=?", (canonical_name,))
+        if not row:
+            await interaction.response.send_message("Dieser Künstler ist nicht in deiner Liste.", ephemeral=True)
+            return
+        artist_id_int = row["artist_id"]
+
+        fav_row = await db.fetch_one(
+            "SELECT 1 FROM user_fav_artists WHERE user_id=? AND artist_id=?",
+            (user_id, artist_id_int),
+        )
+        if not fav_row:
+            await interaction.response.send_message("Dieser Künstler ist nicht in deiner Liste.", ephemeral=True)
+            return
+
+        await db.execute(
+            "DELETE FROM user_fav_artists WHERE user_id=? AND artist_id=?",
+            (user_id, artist_id_int),
+        )
+        await interaction.response.send_message(
+            f"✅ Lieblingskünstler entfernt: **{canonical_name}**.", ephemeral=True
+        )
+
     # ---------- UPDATED: set badge with Spotify validation ----------
     @app_commands.command(name="setbadge", description="Setze dein Badge für einen Lieblingskünstler")
     @app_commands.autocomplete(artist=autocomplete_artists)
