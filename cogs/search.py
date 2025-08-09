@@ -1,5 +1,6 @@
 """Cog implementing search and trading related commands.
 
+
 This cog provides commands for finding owners of a specific Epic track and for
 matching potential trading partners based on a user's Epic collection and
 wishes. It also exposes autocomplete helpers for tracks and artists that
@@ -12,9 +13,8 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from typing import Optional, List
-
-from ..core import db, util
+from typing import Optional, Lis
+from core import db, util
 
 
 class SearchCog(commands.Cog):
@@ -82,6 +82,7 @@ class SearchCog(commands.Cog):
             title=f"🔎 Besitz & Wunsch für {meta['artist_name']} – {meta['title']}",
             url=meta['url'],
             color=discord.Color.blue(),
+ 
         )
         if owners:
             lines = [f"<@{row['user_id']}> — #{row['epic_number']}" for row in owners[:20]]
