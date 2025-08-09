@@ -140,39 +140,19 @@ class ProfileCog(commands.Cog):
                 )
                 suggestions += [(r["track_id"], f"{r['artist_name']} – {r['title']}") for r in rows2]
         else:
-            # no term: return some recently added tracks (by added_at desc)? Could be heavy; return nothing
             suggestions = []
         return [app_commands.Choice(name=label[:100], value=track_id) for track_id, label in suggestions[:25]]
 
+    # ---------- UPDATED: Autocomplete artists via Spotify live ----------
     async def autocomplete_artists(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
-        """Autocomplete helper for artists stored in the local database."""
+        """Autocomplete helper for artists using live Spotify search."""
         term = (current or "").strip()
-        suggestions: list[tuple[str, str]] = []
-        if term:
-            rows = await db.fetch_all(
-                """
-                SELECT artist_id, name
-                FROM artists
-                WHERE name LIKE ?
-                ORDER BY name COLLATE NOCASE
-                LIMIT 15
-                """,
-                (term + "%",),
-            )
-            suggestions += [(str(r["artist_id"]), r["name"]) for r in rows]
-            if len(suggestions) < 25:
-                rows2 = await db.fetch_all(
-                    """
-                    SELECT artist_id, name
-                    FROM artists
-                    WHERE name LIKE ? AND name NOT LIKE ?
-                    ORDER BY name COLLATE NOCASE
-                    LIMIT ?
-                    """,
-                    (f"%{term}%", term + "%", 25 - len(suggestions)),
-                )
-                suggestions += [(str(r["artist_id"]), r["name"]) for r in rows2]
-        return [app_commands.Choice(name=name[:100], value=artist_id) for artist_id, name in suggestions[:25]]
+        try:
+            results = await spotify.search_artists(term, limit=10) if term else []
+        except Exception:
+            results = []
+        # Wir geben den Namen als value zurück; DB-Insert kümmert sich um das Anlegen
+        return [app_commands.Choice(name=a["name"][:100], value=a["name"]) for a in results][:25]
 
     # Command: add Epic via Spotify search
     @app_commands.command(name="addepic", description="Füge ein Epic aus Spotify hinzu")
@@ -300,9 +280,7 @@ class ProfileCog(commands.Cog):
     async def addwish_epic(self, interaction: discord.Interaction, track: str, note: Optional[str] = None) -> None:
         user_id = str(interaction.user.id)
         await self.ensure_user(user_id)
-        # Ensure track exists in DB. If it's missing, insert a placeholder row
-        # with "Unbekannter Titel"/"Unbekannter Künstler" instead of calling
-        # the Spotify API.
+        # Ensure track exists in DB; if not, create a dummy entry from Spotify?
         exists = await db.fetch_one(
             "SELECT 1 FROM tracks WHERE track_id=?",
             (track,),
@@ -349,40 +327,39 @@ class ProfileCog(commands.Cog):
         )
         await interaction.response.send_message("✅ Von der Wunschliste entfernt.", ephemeral=True)
 
-    # Command: add favourite artist
+    # ---------- UPDATED: add favourite artist (Spotify validation) ----------
     @app_commands.command(name="addartist", description="Füge einen Lieblingskünstler hinzu")
     @app_commands.autocomplete(artist=autocomplete_artists)
     async def addartist(self, interaction: discord.Interaction, artist: str) -> None:
         user_id = str(interaction.user.id)
         await self.ensure_user(user_id)
-        # If artist argument is an artist_id, use it; otherwise treat as name
-        try:
-            artist_id_int = int(artist)
-            row = await db.fetch_one("SELECT name FROM artists WHERE artist_id=?", (artist_id_int,))
-            if row is None:
-                await interaction.response.send_message("Künstler nicht gefunden.", ephemeral=True)
-                return
-            artist_name = row["name"]
-        except ValueError:
-            artist_name = artist
-            artist_id_int = None
-        # Ensure artist exists and get its ID
-        if artist_id_int is None:
-            # Insert new artist
-            await db.execute(
-                "INSERT INTO artists(name) VALUES(?) ON CONFLICT(name) DO NOTHING",
-                (artist_name,),
-            )
-            row = await db.fetch_one("SELECT artist_id FROM artists WHERE name=?", (artist_name,))
-            artist_id_int = row["artist_id"]
-        # Insert favourite
+
+        # Spotify-Validierung & Kanonisierung
+        sp = await spotify.get_canonical_artist(artist)
+        if not sp:
+            await interaction.response.send_message("Künstler nicht bei Spotify gefunden.", ephemeral=True)
+            return
+        canonical_name = sp["name"]
+
+        # In lokale Tabelle eintragen (unique by name)
+        await db.execute(
+            "INSERT INTO artists(name) VALUES(?) ON CONFLICT(name) DO NOTHING",
+            (canonical_name,),
+        )
+        row = await db.fetch_one("SELECT artist_id FROM artists WHERE name=?", (canonical_name,))
+        if not row:
+            await interaction.response.send_message("Interner Fehler beim Speichern des Künstlers.", ephemeral=True)
+            return
+        artist_id_int = row["artist_id"]
+
+        # Lieblingskünstler setzen
         await db.execute(
             "INSERT INTO user_fav_artists(user_id, artist_id) VALUES(?,?) ON CONFLICT(user_id, artist_id) DO NOTHING",
             (user_id, artist_id_int),
         )
-        await interaction.response.send_message("✅ Lieblingskünstler hinzugefügt.", ephemeral=True)
+        await interaction.response.send_message(f"✅ Lieblingskünstler hinzugefügt: **{canonical_name}**.", ephemeral=True)
 
-    # Command: set badge for favourite artist
+    # ---------- UPDATED: set badge with Spotify validation ----------
     @app_commands.command(name="setbadge", description="Setze dein Badge für einen Lieblingskünstler")
     @app_commands.autocomplete(artist=autocomplete_artists)
     @app_commands.choices(badge=[app_commands.Choice(name=b, value=b) for b in BADGES])
@@ -390,18 +367,22 @@ class ProfileCog(commands.Cog):
     async def setbadge(self, interaction: discord.Interaction, artist: str, badge: app_commands.Choice[str]) -> None:
         user_id = str(interaction.user.id)
         await self.ensure_user(user_id)
-        # Resolve artist id
-        try:
-            artist_id_int = int(artist)
-        except ValueError:
-            # Insert into artists if not exist
-            artist_name = artist
-            await db.execute(
-                "INSERT INTO artists(name) VALUES(?) ON CONFLICT(name) DO NOTHING",
-                (artist_name,),
-            )
-            row = await db.fetch_one("SELECT artist_id FROM artists WHERE name=?", (artist_name,))
-            artist_id_int = row["artist_id"]
+
+        # Spotify-Validierung & Kanonisierung
+        sp = await spotify.get_canonical_artist(artist)
+        if not sp:
+            await interaction.response.send_message("Künstler nicht bei Spotify gefunden.", ephemeral=True)
+            return
+        canonical_name = sp["name"]
+
+        # Sicherstellen, dass der Künstler in 'artists' existiert
+        await db.execute(
+            "INSERT INTO artists(name) VALUES(?) ON CONFLICT(name) DO NOTHING",
+            (canonical_name,),
+        )
+        row = await db.fetch_one("SELECT artist_id FROM artists WHERE name=?", (canonical_name,))
+        artist_id_int = row["artist_id"]
+
         # Upsert favourite artist row with badge
         await db.execute(
             """
@@ -411,7 +392,7 @@ class ProfileCog(commands.Cog):
             """,
             (user_id, artist_id_int, badge.value),
         )
-        await interaction.response.send_message(f"✅ Badge **{badge.value}** gesetzt.", ephemeral=True)
+        await interaction.response.send_message(f"✅ Badge **{badge.value}** gesetzt für **{canonical_name}**.", ephemeral=True)
 
     # Command: set epic sort mode
     @app_commands.command(name="set_epic_sort", description="Wähle die Sortierung deiner Epics im Profil")
@@ -586,7 +567,7 @@ class ProfileCog(commands.Cog):
             ephemeral=True,
         )
 
-    # Command: favartistcurrent
+    # ---------- UPDATED: favartistcurrent normalisiert über Spotify ----------
     @app_commands.command(name="favartistcurrent", description="Setze den aktuell gespielten Künstler als Lieblingskünstler")
     async def favartistcurrent(self, interaction: discord.Interaction) -> None:
         activity = next((a for a in interaction.user.activities if isinstance(a, discord.Spotify)), None)
@@ -598,21 +579,25 @@ class ProfileCog(commands.Cog):
             return
         user_id = str(interaction.user.id)
         await self.ensure_user(user_id)
-        # Use the first artist from activity
-        artist_name = activity.artist
+
+        # Normalisierung über Spotify
+        sp = await spotify.get_canonical_artist(activity.artist)
+        canonical_name = sp["name"] if sp else activity.artist
+
         # Insert artist if needed
         await db.execute(
             "INSERT INTO artists(name) VALUES(?) ON CONFLICT(name) DO NOTHING",
-            (artist_name,),
+            (canonical_name,),
         )
-        row = await db.fetch_one("SELECT artist_id FROM artists WHERE name=?", (artist_name,))
+        row = await db.fetch_one("SELECT artist_id FROM artists WHERE name=?", (canonical_name,))
         artist_id_int = row["artist_id"]
+
         # Add favourite
         await db.execute(
             "INSERT INTO user_fav_artists(user_id, artist_id) VALUES(?,?) ON CONFLICT(user_id, artist_id) DO NOTHING",
             (user_id, artist_id_int),
         )
         await interaction.response.send_message(
-            f"✅ Lieblingskünstler hinzugefügt: **{artist_name}**.",
+            f"✅ Lieblingskünstler hinzugefügt: **{canonical_name}**.",
             ephemeral=True,
         )
