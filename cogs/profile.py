@@ -143,6 +143,22 @@ class ProfileCog(commands.Cog):
             suggestions = []
         return [app_commands.Choice(name=label[:100], value=track_id) for track_id, label in suggestions[:25]]
 
+    # ---------- NEW: Autocomplete tracks via Spotify live ----------
+    async def autocomplete_spotify_tracks(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
+        """Autocomplete helper using live Spotify track search."""
+        term = (current or "").strip()
+        try:
+            results = await spotify.search_tracks(term, limit=10) if term else []
+        except Exception:
+            results = []
+        choices = []
+        for t in results:
+            label = f"{t['artist_name']} – {t['title']}"
+            if t.get('year'):
+                label += f" ({t['year']})"
+            choices.append(app_commands.Choice(name=label[:100], value=t['track_id']))
+        return choices[:25]
+
     # ---------- UPDATED: Autocomplete artists via Spotify live ----------
     async def autocomplete_artists(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
         """Autocomplete helper for artists using live Spotify search."""
@@ -154,86 +170,67 @@ class ProfileCog(commands.Cog):
         # Wir geben den Namen als value zurück; DB-Insert kümmert sich um das Anlegen
         return [app_commands.Choice(name=a["name"][:100], value=a["name"]) for a in results][:25]
 
-    # Command: add Epic via Spotify search
+    # Command: add Epic via Spotify search with autocomplete
     @app_commands.command(name="addepic", description="Füge ein Epic aus Spotify hinzu")
-    @app_commands.describe(query="Suchbegriff für den Song auf Spotify")
-    async def addepic(self, interaction: discord.Interaction, *, query: str) -> None:
-        """Search for a track on Spotify and add it as an Epic with a serial number."""
-        await interaction.response.defer(thinking=True, ephemeral=True)
-        # Perform Spotify search
-        tracks = await spotify.search_tracks(query, limit=10)
-        if not tracks:
-            await interaction.followup.send("Keine Songs gefunden.", ephemeral=True)
+    @app_commands.describe(track="Der Song (über Autocomplete auswählbar)")
+    @app_commands.autocomplete(track=autocomplete_spotify_tracks)
+    async def addepic(self, interaction: discord.Interaction, track: str) -> None:
+        """Add an Epic by selecting a Spotify track via autocomplete."""
+        try:
+            t = await spotify.get_track(track)
+        except Exception:
+            t = None
+        if not t:
+            await interaction.response.send_message("Song nicht gefunden.", ephemeral=True)
             return
-        # Build Select options
-        options = []
-        for t in tracks:
-            label = f"{t['artist_name']} – {t['title']}"
-            if t.get('year'):
-                label += f" ({t['year']})"
-            options.append(discord.SelectOption(label=label[:100], value=t['track_id']))
 
-        # Create a view with a select
-        class TrackSelect(discord.ui.Select):
-            def __init__(self, cog: ProfileCog, track_list: list[dict[str, str]]):
+        class EpicModal(discord.ui.Modal, title="Epic-Nummer festlegen"):
+            epic_number = discord.ui.TextInput(label="Epic #", placeholder="z.B. 3", required=True)
+
+            def __init__(self, cog: ProfileCog, track_info: dict[str, str]):
+                super().__init__()
                 self.cog = cog
-                self.track_map = {d['track_id']: d for d in track_list}
-                super().__init__(placeholder="Wähle die Song-Version", options=options)
+                self.track = track_info
 
-            async def callback(self, select_interaction: discord.Interaction) -> None:
-                track_id = self.values[0]
-                t = self.track_map[track_id]
-                # Create modal to request epic number
-                class EpicModal(discord.ui.Modal, title="Epic-Nummer festlegen"):
-                    epic_number = discord.ui.TextInput(label="Epic #", placeholder="z.B. 3", required=True)
+            async def on_submit(self, modal_interaction: discord.Interaction) -> None:
+                try:
+                    num = int(str(self.epic_number).strip())
+                except ValueError:
+                    await modal_interaction.response.send_message("Ungültige Epic-Nummer.", ephemeral=True)
+                    return
+                if num <= 0:
+                    await modal_interaction.response.send_message("Epic-Nummer muss > 0 sein.", ephemeral=True)
+                    return
+                user_id = str(modal_interaction.user.id)
+                await self.cog.ensure_user(user_id)
+                await spotify.upsert_track(self.track['track_id'], self.track['title'], self.track['artist_name'], self.track['url'])
+                exists = await db.fetch_one(
+                    """
+                    SELECT 1 FROM user_epics WHERE user_id=? AND track_id=? AND epic_number=?
+                    """,
+                    (user_id, self.track['track_id'], num),
+                )
+                if exists:
+                    await modal_interaction.response.send_message(
+                        "Du besitzt dieses Epic bereits.",
+                        ephemeral=True,
+                    )
+                    return
+                next_pos = await self.cog.get_next_position(user_id)
+                await db.execute(
+                    """
+                    INSERT INTO user_epics(user_id, track_id, epic_number, position)
+                    VALUES(?,?,?,?)
+                    """,
+                    (user_id, self.track['track_id'], num, next_pos),
+                )
+                await modal_interaction.response.send_message(
+                    f"✅ Epic hinzugefügt: **{self.track['artist_name']} – {self.track['title']}** (# {num})",
+                    ephemeral=True,
+                )
 
-                    async def on_submit(self, modal_interaction: discord.Interaction) -> None:
-                        # Validate number
-                        try:
-                            num = int(str(self.epic_number).strip())
-                        except ValueError:
-                            await modal_interaction.response.send_message("Ungültige Epic-Nummer.", ephemeral=True)
-                            return
-                        if num <= 0:
-                            await modal_interaction.response.send_message("Epic-Nummer muss > 0 sein.", ephemeral=True)
-                            return
-                        user_id = str(modal_interaction.user.id)
-                        await self.cog.ensure_user(user_id)
-                        # Upsert track record
-                        await spotify.upsert_track(t['track_id'], t['title'], t['artist_name'], t['url'])
-                        # Insert epic if not exists
-                        exists = await db.fetch_one(
-                            """
-                            SELECT 1 FROM user_epics WHERE user_id=? AND track_id=? AND epic_number=?
-                            """,
-                            (user_id, t['track_id'], num),
-                        )
-                        if exists:
-                            await modal_interaction.response.send_message(
-                                "Du besitzt dieses Epic bereits.",
-                                ephemeral=True,
-                            )
-                            return
-                        # Compute next position
-                        next_pos = await self.cog.get_next_position(user_id)
-                        await db.execute(
-                            """
-                            INSERT INTO user_epics(user_id, track_id, epic_number, position)
-                            VALUES(?,?,?,?)
-                            """,
-                            (user_id, t['track_id'], num, next_pos),
-                        )
-                        await modal_interaction.response.send_message(
-                            f"✅ Epic hinzugefügt: **{t['artist_name']} – {t['title']}** (# {num})",
-                            ephemeral=True,
-                        )
-
-                modal = EpicModal()
-                await select_interaction.response.send_modal(modal)
-
-        view = discord.ui.View()
-        view.add_item(TrackSelect(self, tracks))
-        await interaction.followup.send("Bitte wähle die passende Version aus:", view=view, ephemeral=True)
+        modal = EpicModal(self, t)
+        await interaction.response.send_modal(modal)
 
     # Command: remove an Epic
     @app_commands.command(name="removeepic", description="Entferne ein Epic aus deiner Sammlung")
