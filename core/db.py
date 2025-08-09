@@ -69,10 +69,20 @@ async def fetch_all(query: str, params: tuple | list = ()) -> list[aiosqlite.Row
 
 
 async def execute(query: str, params: tuple | list = ()) -> None:
-    """Execute a query that does not return rows, committing afterwards."""
+    """Execute a query that does not return rows.
+
+    The connection automatically commits the statement unless it is currently
+    inside an explicit transaction started via :func:`transaction`. This allows
+    callers to group multiple ``execute`` calls atomically without each one
+    committing independently.
+    """
     db = await get_db()
     await db.execute(query, params)
-    await db.commit()
+    # Only commit if we're not already inside an explicit transaction. This
+    # keeps ``transaction`` functional by deferring the commit until the context
+    # manager completes.
+    if not db.in_transaction:
+        await db.commit()
 
 
 @asynccontextmanager
