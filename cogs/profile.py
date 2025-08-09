@@ -15,8 +15,8 @@ from discord.ext import commands
 
 from typing import Optional, Iterable, List
 
-from ..core import db, spotify, util
-from ..core.config import GUILD_ID_DEV
+from core import db, spotify, util
+from core.config import GUILD_ID_DEV
 
 # Valid badges that can be assigned to favourite artists. Exposed for
 # autocomplete and validation. The badge 'Shiny' refers to the highest
