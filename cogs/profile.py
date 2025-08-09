@@ -300,9 +300,9 @@ class ProfileCog(commands.Cog):
     async def addwish_epic(self, interaction: discord.Interaction, track: str, note: Optional[str] = None) -> None:
         user_id = str(interaction.user.id)
         await self.ensure_user(user_id)
-        # Ensure track exists in DB; if not, create a dummy entry from Spotify?
-        # Here we assume it exists if it's selected via autocomplete. If not,
-        # upsert as unknown. We don't want to call Spotify search implicitly.
+        # Ensure track exists in DB. If it's missing, insert a placeholder row
+        # with "Unbekannter Titel"/"Unbekannter Künstler" instead of calling
+        # the Spotify API.
         exists = await db.fetch_one(
             "SELECT 1 FROM tracks WHERE track_id=?",
             (track,),
