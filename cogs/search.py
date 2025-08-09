@@ -91,7 +91,7 @@ class SearchCog(commands.Cog):
         else:
             embed.add_field(name="💎 Besitzer", value="Niemand besitzt dieses Epic.", inline=False)
         if wishers:
-            lines = [f"<@{row['user_id']}>" + (f" — _{row['note']} _" if row['note'] else "") for row in wishers[:20]]
+            lines = [f"<@{row['user_id']}>" + (f" — _{row['note']}_" if row['note'] else "") for row in wishers[:20]]
             more = "" if len(wishers) <= 20 else f"\n… {len(wishers) - 20} weitere"
             embed.add_field(name=f"🎯 Suchende ({len(wishers)})", value="\n".join(lines) + more, inline=False)
         else:
