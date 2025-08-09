@@ -1,0 +1,121 @@
+Hello
+World                rows2 = await db.fetch_all(
+                    """
+                    SELECT track_id, title, artist_name
+                    FROM tracks
+                    WHERE (title LIKE ? OR artist_name LIKE ?) AND (title NOT LIKE ? AND artist_name NOT LIKE ?)
+                    ORDER BY artist_name COLLATE NOCASE, title COLLATE NOCASE
+                    LIMIT ?
+                    """,
+                    (f"%{term}%", f"%{term}%", term + "%", term + "%", 25 - len(suggestions)),
+                )
+                suggestions += [(r["track_id"], f"{r['artist_name']} – {r['title']}") for r in rows2]
+        return [app_commands.Choice(name=label[:100], value=tid) for tid, label in suggestions[:25]]
+
+    # /findowners command
+    @app_commands.command(name="findowners", description="Zeigt Besitzer und Suchende eines Epic-Songs")
+    @app_commands.autocomplete(track=autocomplete_tracks)
+    async def findowners(self, interaction: discord.Interaction, track: str) -> None:
+        # Fetch track metadata
+        meta = await db.fetch_one(
+            "SELECT title, artist_name, url FROM tracks WHERE track_id=?",
+            (track,),
+        )
+        if not meta:
+            await interaction.response.send_message("Song nicht gefunden.", ephemeral=True)
+            return
+        # Fetch epic owners
+        owners = await db.fetch_all(
+            """
+            SELECT user_id, epic_number
+            FROM user_epics
+            WHERE track_id=?
+            ORDER BY epic_number ASC
+            """,
+            (track,),
+        )
+        # Fetch wishers
+        wishers = await db.fetch_all(
+            "SELECT user_id, note FROM user_wishlist_epics WHERE track_id=?",
+            (track,),
+        )
+        embed = discord.Embed(
+            title=f"🔎 Besitz & Wunsch für {meta['artist_name']} – {meta['title']}",
+            url=meta['url'],
+            color=discord.Color.blue(),
+        )
+        if owners:
+            lines = [f"<@{row['user_id']}> — #{row['epic_number']}" for row in owners[:20]]
+            more = "" if len(owners) <= 20 else f"\n… {len(owners) - 20} weitere"
+            embed.add_field(name=f"💎 Besitzer ({len(owners)})", value="\n".join(lines) + more, inline=False)
+        else:
+            embed.add_field(name="💎 Besitzer", value="Niemand besitzt dieses Epic.", inline=False)
+        if wishers:
+            lines = [f"<@{row['user_id']}>" + (f" — _{row['note']} _" if row['note'] else "") for row in wishers[:20]]
+            more = "" if len(wishers) <= 20 else f"\n… {len(wishers) - 20} weitere"
+            embed.add_field(name=f"🎯 Suchende ({len(wishers)})", value="\n".join(lines) + more, inline=False)
+        else:
+            embed.add_field(name="🎯 Suchende", value="Niemand wünscht sich dieses Epic.", inline=False)
+        await interaction.response.send_message(embed=embed)
+
+    # /tradehelp command
+    @app_commands.command(name="tradehelp", description="Finde potenzielle Tauschpartner basierend auf Epics und Wunschliste")
+    async def tradehelp(self, interaction: discord.Interaction, user: Optional[discord.Member] = None) -> None:
+        target = user or interaction.user
+        user_id = str(target.id)
+        # Fetch user's wishlist and epics
+        wish_rows = await db.fetch_all(
+            "SELECT track_id FROM user_wishlist_epics WHERE user_id=?",
+            (user_id,),
+        )
+        epic_rows = await db.fetch_all(
+            "SELECT track_id, epic_number FROM user_epics WHERE user_id=?",
+            (user_id,),
+        )
+        wish_ids = [row['track_id'] for row in wish_rows]
+        my_epic_ids = [row['track_id'] for row in epic_rows]
+        # Who has what I want
+        have_what_i_want = []
+        if wish_ids:
+            placeholder = ",".join(["?"] * len(wish_ids))
+            query = (
+                f"SELECT ue.user_id, ue.track_id, ue.epic_number, t.title, t.artist_name "
+                "FROM user_epics ue JOIN tracks t ON t.track_id=ue.track_id "
+                "WHERE ue.track_id IN (" + placeholder + ") AND ue.user_id <> ?"
+            )
+            rows = await db.fetch_all(query, (*wish_ids, user_id))
+            # Group by user; we can list all
+            have_what_i_want = rows
+        # Who wants what I have
+        want_what_i_have = []
+        if my_epic_ids:
+            placeholder = ",".join(["?"] * len(my_epic_ids))
+            query = (
+                f"SELECT uw.user_id, uw.track_id, t.title, t.artist_name "
+                "FROM user_wishlist_epics uw JOIN tracks t ON t.track_id=uw.track_id "
+                "WHERE uw.track_id IN (" + placeholder + ") AND uw.user_id <> ?"
+            )
+            rows = await db.fetch_all(query, (*my_epic_ids, user_id))
+            want_what_i_have = rows
+        embed = discord.Embed(
+            title=f"🤝 Trade-Hilfe für {target.display_name}",
+            color=discord.Color.green(),
+        )
+        if have_what_i_want:
+            # We could group by user, but simple listing is fine.
+            lines = []
+            for row in have_what_i_want[:20]:
+                lines.append(f"<@{row['user_id']}> — {row['artist_name']} – {row['title']} (# {row['epic_number']})")
+            more = "" if len(have_what_i_want) <= 20 else f"\n… {len(have_what_i_want) - 20} weitere Treffer"
+            embed.add_field(name="Sie besitzen, was du suchst", value="\n".join(lines) + more, inline=False)
+        else:
+            embed.add_field(name="Sie besitzen, was du suchst", value="Keine Treffer", inline=False)
+        if want_what_i_have:
+            lines = []
+            for row in want_what_i_have[:20]:
+                lines.append(f"<@{row['user_id']}> — {row['artist_name']} – {row['title']}")
+            more = "" if len(want_what_i_have) <= 20 else f"\n… {len(want_what_i_have) - 20} weitere Treffer"
+            embed.add_field(name="Sie suchen, was du besitzt", value="\n".join(lines) + more, inline=False)
+        else:
+            embed.add_field(name="Sie suchen, was du besitzt", value="Keine Treffer", inline=False)
+   await interaction.response.send_message(embed=embed, ephemeral=(user is not None and user.id != interaction.user.id))
