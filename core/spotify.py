@@ -98,6 +98,38 @@ async def search_tracks(query: str, limit: int = 5) -> list[dict[str, Any]]:
     return tracks
 
 
+async def get_track(track_id: str) -> dict[str, Any] | None:
+    """Return track details from Spotify by its ID.
+
+    The returned dictionary matches ``search_tracks`` entries with keys:
+    ``track_id``, ``title``, ``artist_name``, ``url`` and ``year``. ``None`` is
+    returned if the track is not found.
+    """
+    token = await get_token()
+    session = await _get_session()
+    headers = {"Authorization": f"Bearer {token}"}
+    async with session.get(
+        f"https://api.spotify.com/v1/tracks/{track_id}", headers=headers
+    ) as resp:
+        if resp.status == 404:
+            return None
+        resp.raise_for_status()
+        item = await resp.json()
+
+    title = item["name"]
+    artist_name = ", ".join(artist["name"] for artist in item.get("artists", []))
+    url = item["external_urls"]["spotify"]
+    release_date = item.get("album", {}).get("release_date") or ""
+    year = release_date.split("-")[0] if release_date else ""
+    return {
+        "track_id": track_id,
+        "title": title,
+        "artist_name": artist_name,
+        "url": url,
+        "year": year,
+    }
+
+
 # -----------------------------------------------------------------------------
 # Artist Search (for validation & autocomplete)
 # -----------------------------------------------------------------------------
