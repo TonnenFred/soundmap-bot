@@ -538,7 +538,7 @@ class ProfileCog(commands.Cog):
         )
         # Build embed
         embed = discord.Embed(
-            title=f"🎵 Soundmap profile of {member.display_name}",
+            title=f"🎵 {member.display_name}'s Soundmap Collection",
             color=discord.Color.purple(),
         )
         if username:
