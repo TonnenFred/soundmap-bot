@@ -714,7 +714,14 @@ class ProfileCog(commands.Cog):
     # ---------- UPDATED: add favourite artist (Spotify validation) ----------
     @app_commands.command(name="addartist", description="Add a favorite artist")
     @app_commands.autocomplete(artist=autocomplete_artists)
-    async def addartist(self, interaction: discord.Interaction, artist: str) -> None:
+    @app_commands.choices(badge=[app_commands.Choice(name=b, value=b) for b in BADGES])
+    @app_commands.describe(badge="Which badge you have")
+    async def addartist(
+        self,
+        interaction: discord.Interaction,
+        artist: str,
+        badge: Optional[app_commands.Choice[str]] = None,
+    ) -> None:
         user_id = str(interaction.user.id)
         await self.ensure_user(user_id)
 
@@ -736,13 +743,25 @@ class ProfileCog(commands.Cog):
             return
         artist_id_int = row["artist_id"]
 
-        # Set favorite artist
+        # Set favorite artist and optional badge
         next_pos = await self.get_next_artist_position(user_id)
-        await db.execute(
-            "INSERT INTO user_fav_artists(user_id, artist_id, position) VALUES(?,?,?) ON CONFLICT(user_id, artist_id) DO NOTHING",
-            (user_id, artist_id_int, next_pos),
-        )
-        await interaction.response.send_message(f"✅ Favorite artist added: **{canonical_name}**.", ephemeral=True)
+        if badge is not None:
+            await db.execute(
+                """
+                INSERT INTO user_fav_artists(user_id, artist_id, badge, position)
+                VALUES(?,?,?,?)
+                ON CONFLICT(user_id, artist_id) DO UPDATE SET badge=excluded.badge
+                """,
+                (user_id, artist_id_int, badge.value, next_pos),
+            )
+            msg = f"✅ Favorite artist added: **{canonical_name}** with badge **{badge.value}**."
+        else:
+            await db.execute(
+                "INSERT INTO user_fav_artists(user_id, artist_id, position) VALUES(?,?,?) ON CONFLICT(user_id, artist_id) DO NOTHING",
+                (user_id, artist_id_int, next_pos),
+            )
+            msg = f"✅ Favorite artist added: **{canonical_name}**."
+        await interaction.response.send_message(msg, ephemeral=True)
 
     # ---------- NEW: remove favourite artist ----------
     @app_commands.command(name="delartist", description="Remove a favorite artist")
