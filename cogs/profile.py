@@ -549,6 +549,37 @@ class ProfileCog(commands.Cog):
         # Return the name as the value; the DB insert handles creation
         return [app_commands.Choice(name=a["name"][:100], value=a["name"]) for a in results][:25]
 
+    # Autocomplete helper for the user's favourite artists
+    async def autocomplete_fav_artists(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
+        """Return favourite artists of the invoking user for autocomplete."""
+        user_id = str(interaction.user.id)
+        term = (current or "").strip()
+        if term:
+            rows = await db.fetch_all(
+                """
+                SELECT a.artist_id, a.name
+                FROM user_fav_artists ufa
+                JOIN artists a ON a.artist_id = ufa.artist_id
+                WHERE ufa.user_id=? AND a.name LIKE ?
+                ORDER BY a.name COLLATE NOCASE
+                LIMIT 25
+                """,
+                (user_id, f"%{term}%"),
+            )
+        else:
+            rows = await db.fetch_all(
+                """
+                SELECT a.artist_id, a.name
+                FROM user_fav_artists ufa
+                JOIN artists a ON a.artist_id = ufa.artist_id
+                WHERE ufa.user_id=?
+                ORDER BY a.name COLLATE NOCASE
+                LIMIT 25
+                """,
+                (user_id,),
+            )
+        return [app_commands.Choice(name=r["name"][:100], value=str(r["artist_id"])) for r in rows]
+
     @app_commands.command(name="username", description="Set your Soundmap in-game username")
     @app_commands.describe(name="Your new in-game username")
     async def username(self, interaction: discord.Interaction, name: str) -> None:
@@ -821,41 +852,41 @@ class ProfileCog(commands.Cog):
             f"✅ Favorite artist removed: **{canonical_name}**.", ephemeral=True
         )
 
-    # ---------- UPDATED: set badge with Spotify validation ----------
+    # Set badge for an already favourited artist
     @app_commands.command(name="setbadge", description="Set your badge for a favorite artist")
-    @app_commands.autocomplete(artist=autocomplete_artists)
+    @app_commands.autocomplete(artist=autocomplete_fav_artists)
     @app_commands.choices(badge=[app_commands.Choice(name=b, value=b) for b in BADGES])
     @app_commands.describe(badge="Which badge you have")
     async def setbadge(self, interaction: discord.Interaction, artist: str, badge: app_commands.Choice[str]) -> None:
         user_id = str(interaction.user.id)
         await self.ensure_user(user_id)
 
-        # Spotify-Validierung & Kanonisierung
-        sp = await spotify.get_canonical_artist(artist)
-        if not sp:
-            await interaction.response.send_message("Artist not found on Spotify.", ephemeral=True)
+        try:
+            artist_id = int(artist)
+        except ValueError:
+            await interaction.response.send_message("Invalid artist.", ephemeral=True)
             return
-        canonical_name = sp["name"]
 
-        # Ensure the artist exists in 'artists'
-        await db.execute(
-            "INSERT INTO artists(name) VALUES(?) ON CONFLICT(name) DO NOTHING",
-            (canonical_name,),
-        )
-        row = await db.fetch_one("SELECT artist_id FROM artists WHERE name=?", (canonical_name,))
-        artist_id_int = row["artist_id"]
-
-        # Upsert favourite artist row with badge
-        next_pos = await self.get_next_artist_position(user_id)
-        await db.execute(
+        row = await db.fetch_one(
             """
-            INSERT INTO user_fav_artists(user_id, artist_id, badge, position)
-            VALUES(?,?,?,?)
-            ON CONFLICT(user_id, artist_id) DO UPDATE SET badge=excluded.badge
+            SELECT a.name
+            FROM user_fav_artists ufa
+            JOIN artists a ON a.artist_id = ufa.artist_id
+            WHERE ufa.user_id=? AND ufa.artist_id=?
             """,
-            (user_id, artist_id_int, badge.value, next_pos),
+            (user_id, artist_id),
         )
-        await interaction.response.send_message(f"✅ Badge **{badge.value}** set for **{canonical_name}**.", ephemeral=True)
+        if not row:
+            await interaction.response.send_message("This artist is not in your favourites.", ephemeral=True)
+            return
+        canonical_name = row["name"]
+        await db.execute(
+            "UPDATE user_fav_artists SET badge=? WHERE user_id=? AND artist_id=?",
+            (badge.value, user_id, artist_id),
+        )
+        await interaction.response.send_message(
+            f"✅ Badge **{badge.value}** set for **{canonical_name}**.", ephemeral=True
+        )
 
     @app_commands.command(name="sortartists", description="Sort your favourite artists")
     @app_commands.choices(
