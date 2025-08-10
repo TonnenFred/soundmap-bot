@@ -815,6 +815,172 @@ class ProfileCog(commands.Cog):
             f"✅ Badge **{badge.value}** set for **{canonical_name}**.", ephemeral=True
         )
 
+    @app_commands.command(name="sortartists", description="Sort your favorite artists")
+    @app_commands.choices(mode=[
+        app_commands.Choice(name="Name", value="name"),
+        app_commands.Choice(name="Manual", value="manual"),
+    ])
+    async def sortartists(self, interaction: discord.Interaction, mode: app_commands.Choice[str]) -> None:
+        user_id = str(interaction.user.id)
+        await self.ensure_user(user_id)
+        if mode.value == "name":
+            rows = await db.fetch_all(
+                """
+                SELECT ufa.artist_id
+                FROM user_fav_artists ufa
+                JOIN artists a ON a.artist_id = ufa.artist_id
+                WHERE ufa.user_id=?
+                ORDER BY a.name COLLATE NOCASE
+                """,
+                (user_id,),
+            )
+            async with db.transaction():
+                for idx, r in enumerate(rows, start=1):
+                    await db.execute(
+                        "UPDATE user_fav_artists SET position=? WHERE user_id=? AND artist_id=?",
+                        (idx, user_id, r["artist_id"]),
+                    )
+            await interaction.response.send_message(
+                "✅ Favorite artists sorted alphabetically.", ephemeral=True
+            )
+        else:
+            rows = await db.fetch_all(
+                """
+                SELECT ufa.artist_id, a.name
+                FROM user_fav_artists ufa
+                JOIN artists a ON a.artist_id = ufa.artist_id
+                WHERE ufa.user_id=?
+                ORDER BY ufa.position ASC
+                """,
+                (user_id,),
+            )
+            if not rows:
+                await interaction.response.send_message(
+                    "No favorite artists to sort.", ephemeral=True
+                )
+                return
+            options = [
+                discord.SelectOption(label=r["name"][:100], value=str(r["artist_id"]))
+                for r in rows
+            ]
+            view = SelectArtistView(self, user_id, options)
+            await interaction.response.send_message(
+                "Select the artist to move.", view=view, ephemeral=True
+            )
+
+    @app_commands.command(name="sortepics", description="Sort your Epics")
+    @app_commands.choices(mode=[
+        app_commands.Choice(name="Name", value="name"),
+        app_commands.Choice(name="Manual", value="manual"),
+    ])
+    async def sortepics(self, interaction: discord.Interaction, mode: app_commands.Choice[str]) -> None:
+        user_id = str(interaction.user.id)
+        await self.ensure_user(user_id)
+        if mode.value == "name":
+            rows = await db.fetch_all(
+                """
+                SELECT ue.track_id, ue.epic_number
+                FROM user_epics ue
+                JOIN tracks t ON t.track_id = ue.track_id
+                WHERE ue.user_id=?
+                ORDER BY t.artist_name COLLATE NOCASE, t.title COLLATE NOCASE, ue.epic_number ASC
+                """,
+                (user_id,),
+            )
+            async with db.transaction():
+                for idx, r in enumerate(rows, start=1):
+                    await db.execute(
+                        """
+                        UPDATE user_epics
+                        SET position=?
+                        WHERE user_id=? AND track_id=? AND epic_number=?
+                        """,
+                        (idx, user_id, r["track_id"], r["epic_number"]),
+                    )
+            await interaction.response.send_message(
+                "✅ Epics sorted alphabetically.", ephemeral=True
+            )
+        else:
+            rows = await db.fetch_all(
+                """
+                SELECT ue.track_id, ue.epic_number, t.title, t.artist_name
+                FROM user_epics ue
+                JOIN tracks t ON t.track_id = ue.track_id
+                WHERE ue.user_id=?
+                ORDER BY ue.position ASC
+                """,
+                (user_id,),
+            )
+            if not rows:
+                await interaction.response.send_message(
+                    "No Epics to sort.", ephemeral=True
+                )
+                return
+            options: list[discord.SelectOption] = []
+            for r in rows:
+                label = f"{r['artist_name']} – {r['title']} #{r['epic_number']}"
+                value = f"{r['track_id']}|{r['epic_number']}"
+                options.append(discord.SelectOption(label=label[:100], value=value))
+            view = SelectEpicView(self, user_id, options)
+            await interaction.response.send_message(
+                "Select the Epic to move.", view=view, ephemeral=True
+            )
+
+    @app_commands.command(name="sortwishes", description="Sort your wishlist")
+    @app_commands.choices(mode=[
+        app_commands.Choice(name="Name", value="name"),
+        app_commands.Choice(name="Manual", value="manual"),
+    ])
+    async def sortwishes(self, interaction: discord.Interaction, mode: app_commands.Choice[str]) -> None:
+        user_id = str(interaction.user.id)
+        await self.ensure_user(user_id)
+        if mode.value == "name":
+            rows = await db.fetch_all(
+                """
+                SELECT uw.track_id
+                FROM user_wishlist_epics uw
+                JOIN tracks t ON t.track_id = uw.track_id
+                WHERE uw.user_id=?
+                ORDER BY t.artist_name COLLATE NOCASE, t.title COLLATE NOCASE
+                """,
+                (user_id,),
+            )
+            async with db.transaction():
+                for idx, r in enumerate(rows, start=1):
+                    await db.execute(
+                        "UPDATE user_wishlist_epics SET position=? WHERE user_id=? AND track_id=?",
+                        (idx, user_id, r["track_id"]),
+                    )
+            await interaction.response.send_message(
+                "✅ Wishlist sorted alphabetically.", ephemeral=True
+            )
+        else:
+            rows = await db.fetch_all(
+                """
+                SELECT uw.track_id, t.title, t.artist_name
+                FROM user_wishlist_epics uw
+                JOIN tracks t ON t.track_id = uw.track_id
+                WHERE uw.user_id=?
+                ORDER BY uw.position ASC
+                """,
+                (user_id,),
+            )
+            if not rows:
+                await interaction.response.send_message(
+                    "No wishes to sort.", ephemeral=True
+                )
+                return
+            options = [
+                discord.SelectOption(
+                    label=f"{r['artist_name']} – {r['title']}"[:100], value=r["track_id"]
+                )
+                for r in rows
+            ]
+            view = SelectWishView(self, user_id, options)
+            await interaction.response.send_message(
+                "Select the wish to move.", view=view, ephemeral=True
+            )
+
     # Command: show profile
     @app_commands.command(name="profile", description="Show your Soundmap profile")
     async def profile(self, interaction: discord.Interaction, user: Optional[discord.Member] = None) -> None:
