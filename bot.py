@@ -73,10 +73,48 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 @bot.tree.command(name="commands", description="List all available commands")
 async def list_commands(interaction: discord.Interaction) -> None:
-    """Send a list of all registered slash commands."""
-    cmds = sorted(interaction.client.tree.get_commands(), key=lambda c: c.name)
-    lines = [f"/{c.name} - {c.description}" for c in cmds]
-    await interaction.response.send_message("\n".join(lines), ephemeral=True)
+    """Send a grouped list of all registered slash commands."""
+    tree_cmds = {c.name: c for c in interaction.client.tree.get_commands()}
+
+    groups = {
+        "General": ["commands"],
+        "Profile": ["profile", "username"],
+        "Collection Management": [
+            "addepic",
+            "delepic",
+            "addwish",
+            "delwish",
+            "addartist",
+            "delartist",
+            "setbadge",
+            "wishcurrent",
+            "favartistcurrent",
+        ],
+        "Sorting": ["sortepics", "sortwishes", "sortartists"],
+        "Search & Trading": ["findowners", "findcollector", "tradehelp"],
+    }
+
+    lines: list[str] = []
+    used: set[str] = set()
+    for title, names in groups.items():
+        entries = []
+        for name in names:
+            cmd = tree_cmds.get(name)
+            if cmd:
+                entries.append(f"/{cmd.name} - {cmd.description}")
+                used.add(name)
+        if entries:
+            lines.append(f"**{title}**")
+            lines.extend(entries)
+            lines.append("")
+
+    leftovers = [c for n, c in tree_cmds.items() if n not in used]
+    if leftovers:
+        lines.append("**Other**")
+        for cmd in sorted(leftovers, key=lambda c: c.name):
+            lines.append(f"/{cmd.name} - {cmd.description}")
+
+    await interaction.response.send_message("\n".join(lines).strip(), ephemeral=True)
 
 
 @bot.event
