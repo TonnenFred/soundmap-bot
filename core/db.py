@@ -46,6 +46,13 @@ async def init_db() -> None:
     # executescript automatically wraps statements in a single transaction
     await db.executescript(sql)
     await db.commit()
+    # Ensure the new username column exists for the users table
+    try:
+        await db.execute("ALTER TABLE users ADD COLUMN username TEXT")
+        await db.commit()
+    except Exception:
+        # Column already exists or cannot be added; ignore
+        pass
 
 
 async def fetch_one(query: str, params: tuple | list = ()) -> aiosqlite.Row | None:
