@@ -31,29 +31,6 @@ BADGES = [
     "VIP",
     "Shiny",
 ]
-
-
-class UsernameModal(discord.ui.Modal):
-    """Modal dialog to set or update the Soundmap ingame username."""
-
-    username = discord.ui.TextInput(label="Ingame-Username", max_length=100)
-
-    def __init__(self, cog: "ProfileCog") -> None:
-        super().__init__(title="Soundmap-Username festlegen")
-        self.cog = cog
-
-    async def on_submit(self, interaction: discord.Interaction) -> None:
-        user_id = str(interaction.user.id)
-        await self.cog.ensure_user(user_id)
-        name = self.username.value.strip()
-        await db.execute(
-            "UPDATE users SET username=? WHERE user_id=?", (name, user_id)
-        )
-        await interaction.response.send_message(
-            f"✅ Username gesetzt: **{name}**", ephemeral=True
-        )
-
-
 class ProfileCog(commands.Cog):
     """Cog handling profile management commands for Epics and badges."""
 
@@ -192,10 +169,18 @@ class ProfileCog(commands.Cog):
         return [app_commands.Choice(name=a["name"][:100], value=a["name"]) for a in results][:25]
 
     @app_commands.command(name="username", description="Setze deinen Soundmap-Ingame-Username")
-    async def username(self, interaction: discord.Interaction) -> None:
-        """Open a modal to set or update the ingame Soundmap username."""
-        modal = UsernameModal(self)
-        await interaction.response.send_modal(modal)
+    @app_commands.describe(name="Dein neuer Ingame-Username")
+    async def username(self, interaction: discord.Interaction, name: str) -> None:
+        """Set or update the ingame Soundmap username directly."""
+        user_id = str(interaction.user.id)
+        await self.ensure_user(user_id)
+        name = name.strip()
+        await db.execute(
+            "UPDATE users SET username=? WHERE user_id=?", (name, user_id)
+        )
+        await interaction.response.send_message(
+            f"✅ Username gesetzt: **{name}**", ephemeral=True
+        )
 
     # Command: add Epic via Spotify search with autocomplete
     @app_commands.command(name="addepic", description="Füge ein Epic aus Spotify hinzu")
