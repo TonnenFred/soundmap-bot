@@ -64,6 +64,22 @@ async def init_db() -> None:
         # Column already exists or cannot be added; ignore
         pass
 
+    # Additional columns for sorting and manual ordering
+    alter_statements = [
+        "ALTER TABLE users ADD COLUMN artist_sort_mode TEXT NOT NULL DEFAULT 'name'",
+        "ALTER TABLE users ADD COLUMN wish_sort_mode TEXT NOT NULL DEFAULT 'name'",
+        "ALTER TABLE user_wishlist_epics ADD COLUMN added_at TEXT DEFAULT CURRENT_TIMESTAMP",
+        "ALTER TABLE user_wishlist_epics ADD COLUMN position INTEGER",
+        "ALTER TABLE user_fav_artists ADD COLUMN added_at TEXT DEFAULT CURRENT_TIMESTAMP",
+        "ALTER TABLE user_fav_artists ADD COLUMN position INTEGER",
+    ]
+    for stmt in alter_statements:
+        try:
+            await db.execute(stmt)
+            await db.commit()
+        except Exception:
+            pass
+
 
 async def fetch_one(query: str, params: tuple | list = ()) -> aiosqlite.Row | None:
     """Fetch a single row from the database.

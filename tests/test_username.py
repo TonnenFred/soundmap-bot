@@ -63,7 +63,12 @@ def test_profile_shows_username(monkeypatch):
     cog = ProfileCog(bot)
 
     async def dummy_fetch_one(query, params=()):
-        return {"username": "PlayerX", "epic_sort_mode": "added"}
+        return {
+            "username": "PlayerX",
+            "epic_sort_mode": "added",
+            "artist_sort_mode": "name",
+            "wish_sort_mode": "name",
+        }
 
     async def dummy_fetch_all(query, params=()):
         return []
