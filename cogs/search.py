@@ -133,7 +133,7 @@ class SearchCog(commands.Cog):
                 value="No one is looking for this Epic.",
                 inline=False,
             )
-        await interaction.response.send_message(embed=embed)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     # /tradehelp command
     @app_commands.command(
@@ -196,7 +196,7 @@ class SearchCog(commands.Cog):
             embed.add_field(name="They want what you have", value="\n".join(lines) + more, inline=False)
         else:
             embed.add_field(name="They want what you have", value="No matches", inline=False)
-        await interaction.response.send_message(embed=embed, ephemeral=(user is not None and user.id != interaction.user.id))
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     # /findcollector command
     @app_commands.command(
@@ -257,4 +257,4 @@ class SearchCog(commands.Cog):
             value="\n".join(lines) + more,
             inline=False,
         )
-        await interaction.response.send_message(embed=embed)
+        await interaction.response.send_message(embed=embed, ephemeral=True)

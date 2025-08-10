@@ -48,6 +48,7 @@ def test_addepic_rejects_non_positive_number(monkeypatch):
     interaction = DummyInteraction()
     asyncio.run(ProfileCog.addepic.callback(cog, interaction, "abc", 0))
     assert interaction.response.message == "Epic number must be > 0."
+    assert interaction.response.kwargs.get("ephemeral") is True
     asyncio.run(bot.close())
 
 
