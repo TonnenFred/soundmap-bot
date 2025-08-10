@@ -32,6 +32,25 @@ BADGES = [
     "Shiny",
 ]
 
+BADGE_COLORS = {
+    "Bronze": (205, 127, 50),
+    "Silver": (192, 192, 192),
+    "Gold": (255, 255, 0),
+    "Platinum": (230, 230, 250),
+    "Diamond": (64, 224, 208),
+    "Legendary": (255, 0, 0),
+    "VIP": (144, 238, 144),
+    "Shiny": (255, 215, 0),
+}
+
+
+def _color_badge_text(badge: str) -> str:
+    rgb = BADGE_COLORS.get(badge)
+    if rgb is None:
+        return badge
+    r, g, b = rgb
+    return f"\x1b[38;2;{r};{g};{b}m{badge}\x1b[0m"
+
 
 class MoveEpicView(discord.ui.View):
     """Simple UI view offering buttons to move an Epic up or down."""
@@ -1121,10 +1140,17 @@ class ProfileCog(commands.Cog):
             fa_lines: list[str] = []
             for a in favs[:15]:
                 badge = a["badge"]
-                badge_str = f" — {badge}" if badge else ""
-                fa_lines.append(f"{a['name']}{badge_str}")
-            more = "" if len(favs) <= 15 else f"\n… {len(favs) - 15} more"
-            embed.add_field(name=f"🌟 Favorite Artists ({len(favs)})", value="\n".join(fa_lines) + more, inline=False)
+                if badge:
+                    fa_lines.append(f"{a['name']} — {_color_badge_text(badge)}")
+                else:
+                    fa_lines.append(a["name"])
+            if len(favs) > 15:
+                fa_lines.append(f"… {len(favs) - 15} more")
+            embed.add_field(
+                name=f"🌟 Favorite Artists ({len(favs)})",
+                value="```ansi\n" + "\n".join(fa_lines) + "\n```",
+                inline=False,
+            )
         else:
             embed.add_field(name="🌟 Favorite Artists", value="No favorite artists", inline=False)
         # Wishlist
