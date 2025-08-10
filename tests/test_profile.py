@@ -45,7 +45,7 @@ def test_addepic_rejects_non_positive_number(monkeypatch):
 
     interaction = DummyInteraction()
     asyncio.run(ProfileCog.addepic.callback(cog, interaction, "abc", 0))
-    assert interaction.response.message == "Epic-Nummer muss > 0 sein."
+    assert interaction.response.message == "Epic number must be > 0."
     asyncio.run(bot.close())
 
 
@@ -85,7 +85,7 @@ def test_addepic_inserts_epic(monkeypatch):
     asyncio.run(ProfileCog.addepic.callback(cog, interaction, "abc", 5))
 
     assert dummy_execute.called
-    assert "✅ Epic hinzugefügt" in interaction.response.message
+    assert "✅ Epic added" in interaction.response.message
     asyncio.run(bot.close())
 
 
@@ -105,7 +105,7 @@ def test_addwish_song_not_found(monkeypatch):
     interaction = DummyInteraction()
     asyncio.run(ProfileCog.addwish.callback(cog, interaction, "abc", None))
 
-    assert interaction.response.message == "Song nicht gefunden."
+    assert interaction.response.message == "Song not found."
     asyncio.run(bot.close())
 
 
@@ -141,5 +141,5 @@ def test_addwish_inserts_song(monkeypatch):
     asyncio.run(ProfileCog.addwish.callback(cog, interaction, "abc", None))
 
     assert dummy_execute.called
-    assert interaction.response.message == "✅ Zur Wunschliste hinzugefügt."
+    assert interaction.response.message == "✅ Added to wishlist."
     asyncio.run(bot.close())
