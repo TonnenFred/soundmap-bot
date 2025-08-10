@@ -33,6 +33,27 @@ BADGES = [
 ]
 
 
+class UsernameModal(discord.ui.Modal):
+    """Modal to capture a user's Soundmap in-game username."""
+
+    def __init__(self, cog: "ProfileCog", user_id: str) -> None:
+        super().__init__(title="Soundmap-Username setzen")
+        self.cog = cog
+        self.user_id = user_id
+        self.username = discord.ui.TextInput(label="Ingame-Name", max_length=50)
+        self.add_item(self.username)
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        name = self.username.value.strip()
+        await self.cog.ensure_user(self.user_id)
+        await db.execute(
+            "UPDATE users SET soundmap_username=? WHERE user_id=?",
+            (name, self.user_id),
+        )
+        embed = await self.cog.build_profile_embed(interaction.user)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
 class ProfileCog(commands.Cog):
     """Cog handling profile management commands for Epics and badges."""
 
@@ -106,6 +127,114 @@ class ProfileCog(commands.Cog):
                 """,
                 (new_pos, user_id, track_id, epic_number),
             )
+
+    async def build_profile_embed(self, member: discord.Member, row: Optional[dict] = None) -> discord.Embed:
+        """Build a profile embed for the given member."""
+        user_id = str(member.id)
+        await self.ensure_user(user_id)
+        if row is None:
+            row = await db.fetch_one(
+                "SELECT epic_sort_mode, soundmap_username FROM users WHERE user_id=?",
+                (user_id,),
+            )
+        sort_mode = row["epic_sort_mode"] if row else "added"
+        sm_username = row["soundmap_username"] if row else None
+        # Fetch epics sorted accordingly
+        if sort_mode == "artist":
+            epics = await db.fetch_all(
+                """
+                SELECT ue.epic_number, t.title, t.artist_name, t.url
+                FROM user_epics ue
+                JOIN tracks t ON t.track_id = ue.track_id
+                WHERE ue.user_id=?
+                ORDER BY t.artist_name COLLATE NOCASE ASC, t.title COLLATE NOCASE ASC, ue.epic_number ASC
+                """,
+                (user_id,),
+            )
+        elif sort_mode == "manual":
+            epics = await db.fetch_all(
+                """
+                SELECT ue.epic_number, t.title, t.artist_name, t.url
+                FROM user_epics ue
+                JOIN tracks t ON t.track_id = ue.track_id
+                WHERE ue.user_id=?
+                ORDER BY ue.position ASC, ue.epic_number ASC
+                """,
+                (user_id,),
+            )
+        else:
+            epics = await db.fetch_all(
+                """
+                SELECT ue.epic_number, t.title, t.artist_name, t.url, ue.added_at
+                FROM user_epics ue
+                JOIN tracks t ON t.track_id = ue.track_id
+                WHERE ue.user_id=?
+                ORDER BY ue.added_at ASC, ue.rowid ASC
+                """,
+                (user_id,),
+            )
+        wishlist = await db.fetch_all(
+            """
+            SELECT t.title, t.artist_name, uw.note, t.url
+            FROM user_wishlist_epics uw
+            JOIN tracks t ON t.track_id = uw.track_id
+            WHERE uw.user_id=?
+            ORDER BY t.artist_name COLLATE NOCASE ASC, t.title COLLATE NOCASE ASC
+            """,
+            (user_id,),
+        )
+        favs = await db.fetch_all(
+            """
+            SELECT a.name, ufa.badge
+            FROM user_fav_artists ufa
+            JOIN artists a ON a.artist_id = ufa.artist_id
+            WHERE ufa.user_id=?
+            ORDER BY a.name COLLATE NOCASE
+            """,
+            (user_id,),
+        )
+        embed = discord.Embed(
+            title=f"🎵 Soundmap Profil von {member.display_name}",
+            color=discord.Color.purple(),
+        )
+        if sm_username:
+            embed.add_field(name="👤 Soundmap-Name", value=sm_username, inline=False)
+        if epics:
+            epic_lines: list[str] = []
+            for e in epics[:15]:
+                epic_lines.append(
+                    f"{e['artist_name']} – {e['title']} #{e['epic_number']}"
+                )
+            more = "" if len(epics) <= 15 else f"\n… {len(epics) - 15} weitere"
+            embed.add_field(name=f"💎 Epics ({len(epics)})", value="\n".join(epic_lines) + more, inline=False)
+        else:
+            embed.add_field(name="💎 Epics", value="Keine Epics", inline=False)
+        if wishlist:
+            wl_lines: list[str] = []
+            for w in wishlist[:15]:
+                note_part = f" — _{w['note']}_" if w['note'] else ""
+                wl_lines.append(f"{w['artist_name']} – {w['title']}{note_part}")
+            more = "" if len(wishlist) <= 15 else f"\n… {len(wishlist) - 15} weitere"
+            embed.add_field(name=f"🎯 Wunschliste ({len(wishlist)})", value="\n".join(wl_lines) + more, inline=False)
+        else:
+            embed.add_field(name="🎯 Wunschliste", value="Keine Wünsche", inline=False)
+        if favs:
+            fa_lines: list[str] = []
+            for a in favs[:15]:
+                badge = a["badge"]
+                badge_str = f" — {badge}" if badge else ""
+                fa_lines.append(f"{a['name']}{badge_str}")
+            more = "" if len(favs) <= 15 else f"\n… {len(favs) - 15} weitere"
+            embed.add_field(name=f"🌟 Lieblingskünstler ({len(favs)})", value="\n".join(fa_lines) + more, inline=False)
+        else:
+            embed.add_field(name="🌟 Lieblingskünstler", value="Keine Lieblingskünstler", inline=False)
+        sort_desc = {
+            "added": "Hinzufüge-Reihenfolge",
+            "artist": "nach Artist",
+            "manual": "manuell",
+        }.get(sort_mode, sort_mode)
+        embed.set_footer(text=f"Sortierung: {sort_desc}")
+        return embed
 
     # Slash commands
     # Autocomplete for track selection reused across commands
@@ -420,6 +549,21 @@ class ProfileCog(commands.Cog):
         )
         await interaction.response.send_message(f"✅ Badge **{badge.value}** gesetzt für **{canonical_name}**.", ephemeral=True)
 
+    # Command: set or change Soundmap username
+    @app_commands.command(name="set_sm_username", description="Setze oder ändere deinen Soundmap-Ingame-Namen")
+    @app_commands.describe(username="Dein Ingame-Name")
+    async def set_sm_username(self, interaction: discord.Interaction, username: str) -> None:
+        user_id = str(interaction.user.id)
+        await self.ensure_user(user_id)
+        name = username.strip()
+        await db.execute(
+            "UPDATE users SET soundmap_username=? WHERE user_id=?",
+            (name, user_id),
+        )
+        await interaction.response.send_message(
+            f"✅ Soundmap-Username gesetzt: **{name}**.", ephemeral=True
+        )
+
     # Command: set epic sort mode
     @app_commands.command(name="set_epic_sort", description="Wähle die Sortierung deiner Epics im Profil")
     @app_commands.choices(mode=[
@@ -458,111 +602,14 @@ class ProfileCog(commands.Cog):
         member = user or interaction.user
         user_id = str(member.id)
         await self.ensure_user(user_id)
-        # Fetch sort mode
-        row = await db.fetch_one("SELECT epic_sort_mode FROM users WHERE user_id=?", (user_id,))
-        sort_mode = row["epic_sort_mode"] if row else "added"
-        # Fetch epics sorted accordingly
-        if sort_mode == "artist":
-            epics = await db.fetch_all(
-                """
-                SELECT ue.epic_number, t.title, t.artist_name, t.url
-                FROM user_epics ue
-                JOIN tracks t ON t.track_id = ue.track_id
-                WHERE ue.user_id=?
-                ORDER BY t.artist_name COLLATE NOCASE ASC, t.title COLLATE NOCASE ASC, ue.epic_number ASC
-                """,
-                (user_id,),
-            )
-        elif sort_mode == "manual":
-            epics = await db.fetch_all(
-                """
-                SELECT ue.epic_number, t.title, t.artist_name, t.url
-                FROM user_epics ue
-                JOIN tracks t ON t.track_id = ue.track_id
-                WHERE ue.user_id=?
-                ORDER BY ue.position ASC, ue.epic_number ASC
-                """,
-                (user_id,),
-            )
-        else:
-            # added order
-            epics = await db.fetch_all(
-                """
-                SELECT ue.epic_number, t.title, t.artist_name, t.url, ue.added_at
-                FROM user_epics ue
-                JOIN tracks t ON t.track_id = ue.track_id
-                WHERE ue.user_id=?
-                ORDER BY ue.added_at ASC, ue.rowid ASC
-                """,
-                (user_id,),
-            )
-        # Fetch wishlist
-        wishlist = await db.fetch_all(
-            """
-            SELECT t.title, t.artist_name, uw.note, t.url
-            FROM user_wishlist_epics uw
-            JOIN tracks t ON t.track_id = uw.track_id
-            WHERE uw.user_id=?
-            ORDER BY t.artist_name COLLATE NOCASE ASC, t.title COLLATE NOCASE ASC
-            """,
+        row = await db.fetch_one(
+            "SELECT epic_sort_mode, soundmap_username FROM users WHERE user_id=?",
             (user_id,),
         )
-        # Fetch fav artists & badges
-        favs = await db.fetch_all(
-            """
-            SELECT a.name, ufa.badge
-            FROM user_fav_artists ufa
-            JOIN artists a ON a.artist_id = ufa.artist_id
-            WHERE ufa.user_id=?
-            ORDER BY a.name COLLATE NOCASE
-            """,
-            (user_id,),
-        )
-        # Build embed
-        embed = discord.Embed(
-            title=f"🎵 Soundmap Profil von {member.display_name}",
-            color=discord.Color.purple(),
-        )
-        # Epics list
-        if epics:
-            epic_lines: list[str] = []
-            for i, e in enumerate(epics[:15]):  # show up to 15
-                # Display format: "Artist – Title #Number" instead of "#Number: Artist – Title"
-                epic_lines.append(
-                    f"{e['artist_name']} – {e['title']} #{e['epic_number']}"
-                )
-            more = "" if len(epics) <= 15 else f"\n… {len(epics) - 15} weitere"
-            embed.add_field(name=f"💎 Epics ({len(epics)})", value="\n".join(epic_lines) + more, inline=False)
-        else:
-            embed.add_field(name="💎 Epics", value="Keine Epics", inline=False)
-        # Wishlist
-        if wishlist:
-            wl_lines: list[str] = []
-            for w in wishlist[:15]:
-                note_part = f" — _{w['note']}_" if w['note'] else ""
-                wl_lines.append(f"{w['artist_name']} – {w['title']}{note_part}")
-            more = "" if len(wishlist) <= 15 else f"\n… {len(wishlist) - 15} weitere"
-            embed.add_field(name=f"🎯 Wunschliste ({len(wishlist)})", value="\n".join(wl_lines) + more, inline=False)
-        else:
-            embed.add_field(name="🎯 Wunschliste", value="Keine Wünsche", inline=False)
-        # Favourite artists with badge
-        if favs:
-            fa_lines: list[str] = []
-            for a in favs[:15]:
-                badge = a["badge"]
-                badge_str = f" — {badge}" if badge else ""
-                fa_lines.append(f"{a['name']}{badge_str}")
-            more = "" if len(favs) <= 15 else f"\n… {len(favs) - 15} weitere"
-            embed.add_field(name=f"🌟 Lieblingskünstler ({len(favs)})", value="\n".join(fa_lines) + more, inline=False)
-        else:
-            embed.add_field(name="🌟 Lieblingskünstler", value="Keine Lieblingskünstler", inline=False)
-        # Sort mode note
-        sort_desc = {
-            "added": "Hinzufüge-Reihenfolge",
-            "artist": "nach Artist",
-            "manual": "manuell",
-        }.get(sort_mode, sort_mode)
-        embed.set_footer(text=f"Sortierung: {sort_desc}")
+        if (row is None or not row["soundmap_username"]) and user is None:
+            await interaction.response.send_modal(UsernameModal(self, user_id))
+            return
+        embed = await self.build_profile_embed(member, row)
         await interaction.response.send_message(embed=embed, ephemeral=(user is None))
 
     # Command: wishcurrent (current song as wishlist)

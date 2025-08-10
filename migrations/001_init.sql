@@ -3,6 +3,7 @@
 -- Users table to persist per-user settings.
 CREATE TABLE IF NOT EXISTS users (
   user_id TEXT PRIMARY KEY,
+  soundmap_username TEXT,
   epic_sort_mode TEXT NOT NULL DEFAULT 'added',
   created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
