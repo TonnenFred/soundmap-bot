@@ -566,16 +566,6 @@ class ProfileCog(commands.Cog):
             embed.add_field(name=f"💎 Epics ({len(epics)})", value="\n".join(epic_lines) + more, inline=False)
         else:
             embed.add_field(name="💎 Epics", value="Keine Epics", inline=False)
-        # Wishlist
-        if wishlist:
-            wl_lines: list[str] = []
-            for w in wishlist[:15]:
-                note_part = f" — _{w['note']}_" if w['note'] else ""
-                wl_lines.append(f"{w['artist_name']} – {w['title']}{note_part}")
-            more = "" if len(wishlist) <= 15 else f"\n… {len(wishlist) - 15} weitere"
-            embed.add_field(name=f"🎯 Wunschliste ({len(wishlist)})", value="\n".join(wl_lines) + more, inline=False)
-        else:
-            embed.add_field(name="🎯 Wunschliste", value="Keine Wünsche", inline=False)
         # Favourite artists with badge
         if favs:
             fa_lines: list[str] = []
@@ -587,13 +577,17 @@ class ProfileCog(commands.Cog):
             embed.add_field(name=f"🌟 Lieblingskünstler ({len(favs)})", value="\n".join(fa_lines) + more, inline=False)
         else:
             embed.add_field(name="🌟 Lieblingskünstler", value="Keine Lieblingskünstler", inline=False)
-        # Sort mode note
-        sort_desc = {
-            "added": "Hinzufüge-Reihenfolge",
-            "artist": "nach Artist",
-            "manual": "manuell",
-        }.get(sort_mode, sort_mode)
-        embed.set_footer(text=f"Sortierung: {sort_desc}")
+        # Wishlist
+        if wishlist:
+            wl_lines: list[str] = []
+            for w in wishlist[:15]:
+                note_part = f" — _{w['note']}_" if w['note'] else ""
+                wl_lines.append(f"{w['artist_name']} – {w['title']}{note_part}")
+            more = "" if len(wishlist) <= 15 else f"\n… {len(wishlist) - 15} weitere"
+            embed.add_field(name=f"🎯 Wunschliste ({len(wishlist)})", value="\n".join(wl_lines) + more, inline=False)
+        else:
+            embed.add_field(name="🎯 Wunschliste", value="Keine Wünsche", inline=False)
+
         await interaction.response.send_message(embed=embed, ephemeral=(user is None))
 
     # Command: wishcurrent (current song as wishlist)
