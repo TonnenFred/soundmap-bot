@@ -31,6 +31,44 @@ BADGES = [
     "VIP",
     "Shiny",
 ]
+
+
+class MoveEpicView(discord.ui.View):
+    """Simple UI view offering buttons to move an Epic up or down."""
+
+    def __init__(self, cog: "ProfileCog", user_id: str, track_id: str, epic_number: int) -> None:
+        super().__init__()
+        self.cog = cog
+        self.user_id = user_id
+        self.track_id = track_id
+        self.epic_number = epic_number
+
+    async def _get_position(self) -> int:
+        row = await db.fetch_one(
+            "SELECT position FROM user_epics WHERE user_id=? AND track_id=? AND epic_number=?",
+            (self.user_id, self.track_id, self.epic_number),
+        )
+        return row["position"] if row else 0
+
+    @discord.ui.button(emoji="⬆️", style=discord.ButtonStyle.secondary)
+    async def move_up(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        pos = await self._get_position()
+        await self.cog.move_epic_to(self.user_id, self.track_id, self.epic_number, pos - 1)
+        pos = await self._get_position()
+        await interaction.response.edit_message(
+            content=f"Current position: {pos}", view=self
+        )
+
+    @discord.ui.button(emoji="⬇️", style=discord.ButtonStyle.secondary)
+    async def move_down(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        pos = await self._get_position()
+        await self.cog.move_epic_to(self.user_id, self.track_id, self.epic_number, pos + 1)
+        pos = await self._get_position()
+        await interaction.response.edit_message(
+            content=f"Current position: {pos}", view=self
+        )
+
+
 class ProfileCog(commands.Cog):
     """Cog handling profile management commands for Epics and badges."""
 
@@ -455,17 +493,30 @@ class ProfileCog(commands.Cog):
         )
 
     # Command: move epic manually
-    @app_commands.command(name="move_epic", description="Move an Epic to a specific position")
+    @app_commands.command(
+        name="move_epic", description="Interactively move one of your Epics"
+    )
     @app_commands.autocomplete(track=autocomplete_tracks)
-    @app_commands.describe(epic_number="The epic's serial number", to="The target position (1-based)")
-    async def move_epic(self, interaction: discord.Interaction, track: str, epic_number: int, to: int) -> None:
+    @app_commands.describe(epic_number="The Epic's serial number to move")
+    async def move_epic(
+        self, interaction: discord.Interaction, track: str, epic_number: int
+    ) -> None:
         user_id = str(interaction.user.id)
-        try:
-            await self.move_epic_to(user_id, track, epic_number, to)
-        except ValueError as e:
-            await interaction.response.send_message(str(e), ephemeral=True)
+        row = await db.fetch_one(
+            "SELECT position FROM user_epics WHERE user_id=? AND track_id=? AND epic_number=?",
+            (user_id, track, epic_number),
+        )
+        if row is None:
+            await interaction.response.send_message(
+                "Epic not found for this user.", ephemeral=True
+            )
             return
-        await interaction.response.send_message("✅ Epic moved.", ephemeral=True)
+        view = MoveEpicView(self, user_id, track, epic_number)
+        await interaction.response.send_message(
+            f"Current position: {row['position']}. Use the buttons to move the Epic.",
+            view=view,
+            ephemeral=True,
+        )
 
     # Command: show profile
     @app_commands.command(name="profile", description="Show your Soundmap profile")
