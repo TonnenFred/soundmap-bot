@@ -227,27 +227,30 @@ class ProfileCog(commands.Cog):
             (user_id,),
         )
 
-    async def get_next_position(self, user_id: str) -> int:
-        """Shift existing epics down and return the top position for a new Epic."""
+    async def _bump_positions(self, table: str, user_id: str) -> int:
+        """Increment positions for all rows of a user in ``table`` and return 1.
+
+        This helper is used to insert new entries at the top of a user's
+        collection by shifting existing ones down. ``table`` must be one of the
+        known profile tables and is therefore trusted.
+        """
         await db.execute(
-            "UPDATE user_epics SET position = position + 1 WHERE user_id=?",
+            f"UPDATE {table} SET position = position + 1 WHERE user_id=?",
             (user_id,),
         )
         return 1
+
+    async def get_next_position(self, user_id: str) -> int:
+        """Return the position for a new Epic (top of the list)."""
+        return await self._bump_positions("user_epics", user_id)
 
     async def get_next_artist_position(self, user_id: str) -> int:
-        await db.execute(
-            "UPDATE user_fav_artists SET position = position + 1 WHERE user_id=?",
-            (user_id,),
-        )
-        return 1
+        """Return the position for a new favourite artist (top of the list)."""
+        return await self._bump_positions("user_fav_artists", user_id)
 
     async def get_next_wish_position(self, user_id: str) -> int:
-        await db.execute(
-            "UPDATE user_wishlist_epics SET position = position + 1 WHERE user_id=?",
-            (user_id,),
-        )
-        return 1
+        """Return the position for a new wishlist entry (top of the list)."""
+        return await self._bump_positions("user_wishlist_epics", user_id)
 
     async def move_epic_to(self, user_id: str, track_id: str, epic_number: int, new_pos: int) -> None:
         """Reposition an Epic in manual ordering, adjusting other positions accordingly."""
@@ -750,21 +753,36 @@ class ProfileCog(commands.Cog):
             return
         artist_id_int = row["artist_id"]
 
-        # Set favorite artist and optional badge
+        # Only shift positions when inserting a brand new favourite
+        exists = await db.fetch_one(
+            "SELECT 1 FROM user_fav_artists WHERE user_id=? AND artist_id=?",
+            (user_id, artist_id_int),
+        )
+        if exists:
+            if badge is not None:
+                await db.execute(
+                    "UPDATE user_fav_artists SET badge=? WHERE user_id=? AND artist_id=?",
+                    (badge.value, user_id, artist_id_int),
+                )
+                msg = f"✅ Favorite artist added: **{canonical_name}** with badge **{badge.value}**."
+            else:
+                msg = f"✅ Favorite artist added: **{canonical_name}**."
+            await interaction.response.send_message(msg, ephemeral=True)
+            return
+
         next_pos = await self.get_next_artist_position(user_id)
         if badge is not None:
             await db.execute(
                 """
                 INSERT INTO user_fav_artists(user_id, artist_id, badge, position)
                 VALUES(?,?,?,?)
-                ON CONFLICT(user_id, artist_id) DO UPDATE SET badge=excluded.badge
                 """,
                 (user_id, artist_id_int, badge.value, next_pos),
             )
             msg = f"✅ Favorite artist added: **{canonical_name}** with badge **{badge.value}**."
         else:
             await db.execute(
-                "INSERT INTO user_fav_artists(user_id, artist_id, position) VALUES(?,?,?) ON CONFLICT(user_id, artist_id) DO NOTHING",
+                "INSERT INTO user_fav_artists(user_id, artist_id, position) VALUES(?,?,?)",
                 (user_id, artist_id_int, next_pos),
             )
             msg = f"✅ Favorite artist added: **{canonical_name}**."
