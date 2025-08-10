@@ -14,7 +14,7 @@ os.environ.setdefault("DISCORD_TOKEN", "test-token")
 os.environ.setdefault("SPOTIFY_CLIENT_ID", "cid")
 os.environ.setdefault("SPOTIFY_CLIENT_SECRET", "csecret")
 
-from cogs.profile import ProfileCog
+from cogs.profile import ProfileCog, BADGE_EMOJIS
 from core import spotify, db
 
 
@@ -219,5 +219,66 @@ def test_profile_shows_badge_with_emoji(monkeypatch):
     asyncio.run(ProfileCog.profile.callback(cog, interaction, None))
     embed = interaction.response.kwargs["embed"]
     field = next(f for f in embed.fields if f.name.startswith("🌟 Favorite Artists"))
-    assert field.value == "Artist — 🟠 Gold"
+    assert field.value == f"Artist — {BADGE_EMOJIS['Gold']} Gold"
+    asyncio.run(bot.close())
+
+
+def test_setbadge_updates_existing(monkeypatch):
+    intents = discord.Intents.none()
+    bot = commands.Bot(command_prefix="!", intents=intents)
+    cog = ProfileCog(bot)
+
+    async def dummy_fetch_one(query, params):
+        if "FROM user_fav_artists" in query:
+            return {"name": "Artist"}
+        return None
+
+    async def dummy_execute(query, params):
+        dummy_execute.called = True
+        dummy_execute.params = params
+
+    dummy_execute.called = False
+
+    async def dummy_ensure_user(self, uid):
+        pass
+
+    monkeypatch.setattr(db, "fetch_one", dummy_fetch_one)
+    monkeypatch.setattr(db, "execute", dummy_execute)
+    monkeypatch.setattr(ProfileCog, "ensure_user", dummy_ensure_user)
+
+    interaction = DummyInteraction()
+    badge_choice = app_commands.Choice(name="Gold", value="Gold")
+    asyncio.run(ProfileCog.setbadge.callback(cog, interaction, "1", badge_choice))
+
+    assert dummy_execute.called
+    assert "Gold" in interaction.response.message
+    asyncio.run(bot.close())
+
+
+def test_setbadge_rejects_non_favorite(monkeypatch):
+    intents = discord.Intents.none()
+    bot = commands.Bot(command_prefix="!", intents=intents)
+    cog = ProfileCog(bot)
+
+    async def dummy_fetch_one(query, params):
+        return None
+
+    async def dummy_execute(query, params):
+        dummy_execute.called = True
+
+    dummy_execute.called = False
+
+    async def dummy_ensure_user(self, uid):
+        pass
+
+    monkeypatch.setattr(db, "fetch_one", dummy_fetch_one)
+    monkeypatch.setattr(db, "execute", dummy_execute)
+    monkeypatch.setattr(ProfileCog, "ensure_user", dummy_ensure_user)
+
+    interaction = DummyInteraction()
+    badge_choice = app_commands.Choice(name="Gold", value="Gold")
+    asyncio.run(ProfileCog.setbadge.callback(cog, interaction, "1", badge_choice))
+
+    assert not dummy_execute.called
+    assert interaction.response.message == "This artist is not in your favourites."
     asyncio.run(bot.close())
