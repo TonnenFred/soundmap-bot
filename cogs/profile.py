@@ -13,7 +13,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from typing import Optional, Iterable, List
+from typing import Optional, List
 
 from core import db, spotify, util
 from core.config import GUILD_ID_DEV
@@ -127,6 +127,79 @@ class MoveWishView(discord.ui.View):
         await self.cog.move_wish_to(self.user_id, self.track_id, pos + 1)
         pos = await self._get_position()
         await interaction.response.edit_message(content=f"Current position: {pos}", view=self)
+
+
+class ArtistSelect(discord.ui.Select):
+    """Dropdown for choosing an artist to manually reorder."""
+
+    def __init__(self, cog: "ProfileCog", user_id: str, options: list[discord.SelectOption]) -> None:
+        super().__init__(placeholder="Select an artist", options=options)
+        self.cog = cog
+        self.user_id = user_id
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        artist_id = int(self.values[0])
+        view = MoveArtistView(self.cog, self.user_id, artist_id)
+        pos = await view._get_position()
+        await interaction.response.edit_message(
+            content=f"Current position: {pos}. Use the buttons to move the artist.",
+            view=view,
+        )
+
+
+class SelectArtistView(discord.ui.View):
+    def __init__(self, cog: "ProfileCog", user_id: str, options: list[discord.SelectOption]) -> None:
+        super().__init__()
+        self.add_item(ArtistSelect(cog, user_id, options))
+
+
+class EpicSelect(discord.ui.Select):
+    """Dropdown for choosing an Epic to manually reorder."""
+
+    def __init__(self, cog: "ProfileCog", user_id: str, options: list[discord.SelectOption]) -> None:
+        super().__init__(placeholder="Select an Epic", options=options)
+        self.cog = cog
+        self.user_id = user_id
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        track_id, epic_number = self.values[0].split("|")
+        epic_number = int(epic_number)
+        view = MoveEpicView(self.cog, self.user_id, track_id, epic_number)
+        pos = await view._get_position()
+        await interaction.response.edit_message(
+            content=f"Current position: {pos}. Use the buttons to move the Epic.",
+            view=view,
+        )
+
+
+class SelectEpicView(discord.ui.View):
+    def __init__(self, cog: "ProfileCog", user_id: str, options: list[discord.SelectOption]) -> None:
+        super().__init__()
+        self.add_item(EpicSelect(cog, user_id, options))
+
+
+class WishSelect(discord.ui.Select):
+    """Dropdown for choosing a wishlist item to manually reorder."""
+
+    def __init__(self, cog: "ProfileCog", user_id: str, options: list[discord.SelectOption]) -> None:
+        super().__init__(placeholder="Select a wish", options=options)
+        self.cog = cog
+        self.user_id = user_id
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        track_id = self.values[0]
+        view = MoveWishView(self.cog, self.user_id, track_id)
+        pos = await view._get_position()
+        await interaction.response.edit_message(
+            content=f"Current position: {pos}. Use the buttons to move the wish.",
+            view=view,
+        )
+
+
+class SelectWishView(discord.ui.View):
+    def __init__(self, cog: "ProfileCog", user_id: str, options: list[discord.SelectOption]) -> None:
+        super().__init__()
+        self.add_item(WishSelect(cog, user_id, options))
 
 
 class ProfileCog(commands.Cog):
@@ -464,64 +537,6 @@ class ProfileCog(commands.Cog):
         # Return the name as the value; the DB insert handles creation
         return [app_commands.Choice(name=a["name"][:100], value=a["name"]) for a in results][:25]
 
-    # Autocomplete helpers for manual sorting
-    async def autocomplete_user_artists_for_sort(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
-        user_id = str(interaction.user.id)
-        term = (current or "").strip()
-        rows = await db.fetch_all(
-            """
-            SELECT a.name
-            FROM user_fav_artists ufa
-            JOIN artists a ON a.artist_id = ufa.artist_id
-            WHERE ufa.user_id=? AND a.name LIKE ?
-            ORDER BY a.name COLLATE NOCASE
-            LIMIT 25
-            """,
-            (user_id, f"%{term}%"),
-        )
-        return [app_commands.Choice(name=r["name"], value=r["name"]) for r in rows]
-
-    async def autocomplete_owned_epic_tracks(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
-        user_id = str(interaction.user.id)
-        term = (current or "").strip()
-        rows = await db.fetch_all(
-            """
-            SELECT DISTINCT t.track_id, t.title, t.artist_name
-            FROM user_epics ue
-            JOIN tracks t ON t.track_id = ue.track_id
-            WHERE ue.user_id=? AND (t.title LIKE ? OR t.artist_name LIKE ?)
-            ORDER BY t.artist_name COLLATE NOCASE, t.title COLLATE NOCASE
-            LIMIT 25
-            """,
-            (user_id, f"%{term}%", f"%{term}%"),
-        )
-        return [app_commands.Choice(name=f"{r['artist_name']} – {r['title']}", value=r['track_id']) for r in rows]
-
-    async def autocomplete_wishlist_tracks(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
-        user_id = str(interaction.user.id)
-        term = (current or "").strip()
-        rows = await db.fetch_all(
-            """
-            SELECT t.track_id, t.title, t.artist_name
-            FROM user_wishlist_epics uw
-            JOIN tracks t ON t.track_id = uw.track_id
-            WHERE uw.user_id=? AND (t.title LIKE ? OR t.artist_name LIKE ?)
-            ORDER BY t.artist_name COLLATE NOCASE, t.title COLLATE NOCASE
-            LIMIT 25
-            """,
-            (user_id, f"%{term}%", f"%{term}%"),
-        )
-        return [app_commands.Choice(name=f"{r['artist_name']} – {r['title']}", value=r['track_id']) for r in rows]
-
-    async def autocomplete_sort_item(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
-        target = getattr(interaction.namespace, "subject", None)
-        if target == "artist":
-            return await self.autocomplete_user_artists_for_sort(interaction, current)
-        elif target == "wish":
-            return await self.autocomplete_wishlist_tracks(interaction, current)
-        else:
-            return await self.autocomplete_owned_epic_tracks(interaction, current)
-
     @app_commands.command(name="username", description="Set your Soundmap in-game username")
     @app_commands.describe(name="Your new in-game username")
     async def username(self, interaction: discord.Interaction, name: str) -> None:
@@ -811,116 +826,140 @@ class ProfileCog(commands.Cog):
         )
         await interaction.response.send_message(f"✅ Badge **{badge.value}** set for **{canonical_name}**.", ephemeral=True)
 
-    # Unified sorting command for artists, epics and wishlist
-    @app_commands.command(name="sort", description="Sort your artists, epics or wishlist")
+    @app_commands.command(name="sortartists", description="Sort your favourite artists")
     @app_commands.choices(
-        subject=[
-            app_commands.Choice(name="Artist", value="artist"),
-            app_commands.Choice(name="Epic", value="epic"),
-            app_commands.Choice(name="Wish", value="wish"),
-        ],
         mode=[
             app_commands.Choice(name="Sort by name", value="name"),
             app_commands.Choice(name="Sort by added order", value="added"),
-            app_commands.Choice(name="Manual", value="manual"),
-        ],
+            app_commands.Choice(name="Manual sort", value="manual"),
+        ]
     )
-    @app_commands.describe(
-        item="Artist or song to move when using manual mode",
-        epic_number="Epic number when sorting Epics manually",
-    )
-    @app_commands.autocomplete(item=autocomplete_sort_item)
-    async def sort(
-        self,
-        interaction: discord.Interaction,
-        subject: app_commands.Choice[str],
-        mode: app_commands.Choice[str],
-        item: Optional[str] = None,
-        epic_number: Optional[int] = None,
-    ) -> None:
+    async def sortartists(self, interaction: discord.Interaction, mode: app_commands.Choice[str]) -> None:
         user_id = str(interaction.user.id)
         await self.ensure_user(user_id)
-        column_map = {
-            "artist": "artist_sort_mode",
-            "epic": "epic_sort_mode",
-            "wish": "wish_sort_mode",
-        }
-        column = column_map[subject.value]
+        column = "artist_sort_mode"
         if mode.value != "manual":
             await db.execute(
                 f"INSERT INTO users(user_id, {column}) VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET {column}=excluded.{column}",
                 (user_id, mode.value),
             )
-            if subject.value == "artist":
-                await self.reorder_artists(user_id, mode.value)
-            elif subject.value == "epic":
-                await self.reorder_epics(user_id, mode.value)
-            else:
-                await self.reorder_wishlist(user_id, mode.value)
-            await interaction.response.send_message(
-                f"✅ {subject.name} sorted by {mode.name}.", ephemeral=True
-            )
+            await self.reorder_artists(user_id, mode.value)
+            await interaction.response.send_message(f"✅ Artists sorted by {mode.name}.", ephemeral=True)
             return
         await db.execute(
             f"INSERT INTO users(user_id, {column}) VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET {column}=excluded.{column}",
             (user_id, "manual"),
         )
-        if subject.value == "artist":
-            if not item:
-                await interaction.response.send_message("Select an artist to move.", ephemeral=True)
-                return
-            row = await db.fetch_one(
-                """
-                SELECT ufa.artist_id, ufa.position
-                FROM user_fav_artists ufa
-                JOIN artists a ON a.artist_id = ufa.artist_id
-                WHERE ufa.user_id=? AND a.name=?
-                """,
-                (user_id, item),
+        rows = await db.fetch_all(
+            """
+            SELECT a.artist_id, a.name
+            FROM user_fav_artists ufa
+            JOIN artists a ON a.artist_id = ufa.artist_id
+            WHERE ufa.user_id=?
+            ORDER BY ufa.position ASC
+            """,
+            (user_id,),
+        )
+        if not rows:
+            await interaction.response.send_message("You have no favourite artists.", ephemeral=True)
+            return
+        options = [discord.SelectOption(label=r["name"], value=str(r["artist_id"])) for r in rows[:25]]
+        view = SelectArtistView(self, user_id, options)
+        await interaction.response.send_message("Select an artist to move.", view=view, ephemeral=True)
+
+    @app_commands.command(name="sortepics", description="Sort your owned Epics")
+    @app_commands.choices(
+        mode=[
+            app_commands.Choice(name="Sort by name", value="name"),
+            app_commands.Choice(name="Sort by added order", value="added"),
+            app_commands.Choice(name="Manual sort", value="manual"),
+        ]
+    )
+    async def sortepics(self, interaction: discord.Interaction, mode: app_commands.Choice[str]) -> None:
+        user_id = str(interaction.user.id)
+        await self.ensure_user(user_id)
+        column = "epic_sort_mode"
+        if mode.value != "manual":
+            await db.execute(
+                f"INSERT INTO users(user_id, {column}) VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET {column}=excluded.{column}",
+                (user_id, mode.value),
             )
-            if not row:
-                await interaction.response.send_message("Artist not in your favorites.", ephemeral=True)
-                return
-            view = MoveArtistView(self, user_id, row["artist_id"])
-            await interaction.response.send_message(
-                f"Current position: {row['position']}. Use the buttons to move the artist.",
-                view=view,
-                ephemeral=True,
+            await self.reorder_epics(user_id, mode.value)
+            await interaction.response.send_message(f"✅ Epics sorted by {mode.name}.", ephemeral=True)
+            return
+        await db.execute(
+            f"INSERT INTO users(user_id, {column}) VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET {column}=excluded.{column}",
+            (user_id, "manual"),
+        )
+        rows = await db.fetch_all(
+            """
+            SELECT ue.track_id, ue.epic_number, t.title, t.artist_name
+            FROM user_epics ue
+            JOIN tracks t ON t.track_id = ue.track_id
+            WHERE ue.user_id=?
+            ORDER BY ue.position ASC, ue.epic_number ASC
+            """,
+            (user_id,),
+        )
+        if not rows:
+            await interaction.response.send_message("You have no Epics to sort.", ephemeral=True)
+            return
+        options = [
+            discord.SelectOption(
+                label=f"{r['artist_name']} – {r['title']} (#{r['epic_number']})",
+                value=f"{r['track_id']}|{r['epic_number']}"
             )
-        elif subject.value == "epic":
-            if not item or epic_number is None:
-                await interaction.response.send_message("Provide song and epic number.", ephemeral=True)
-                return
-            row = await db.fetch_one(
-                "SELECT position FROM user_epics WHERE user_id=? AND track_id=? AND epic_number=?",
-                (user_id, item, epic_number),
+            for r in rows[:25]
+        ]
+        view = SelectEpicView(self, user_id, options)
+        await interaction.response.send_message("Select an Epic to move.", view=view, ephemeral=True)
+
+    @app_commands.command(name="sortwishes", description="Sort your wishlist")
+    @app_commands.choices(
+        mode=[
+            app_commands.Choice(name="Sort by name", value="name"),
+            app_commands.Choice(name="Sort by added order", value="added"),
+            app_commands.Choice(name="Manual sort", value="manual"),
+        ]
+    )
+    async def sortwishes(self, interaction: discord.Interaction, mode: app_commands.Choice[str]) -> None:
+        user_id = str(interaction.user.id)
+        await self.ensure_user(user_id)
+        column = "wish_sort_mode"
+        if mode.value != "manual":
+            await db.execute(
+                f"INSERT INTO users(user_id, {column}) VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET {column}=excluded.{column}",
+                (user_id, mode.value),
             )
-            if not row:
-                await interaction.response.send_message("Epic not found for this user.", ephemeral=True)
-                return
-            view = MoveEpicView(self, user_id, item, epic_number)
-            await interaction.response.send_message(
-                f"Current position: {row['position']}. Use the buttons to move the Epic.",
-                view=view,
-                ephemeral=True,
+            await self.reorder_wishlist(user_id, mode.value)
+            await interaction.response.send_message(f"✅ Wishlist sorted by {mode.name}.", ephemeral=True)
+            return
+        await db.execute(
+            f"INSERT INTO users(user_id, {column}) VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET {column}=excluded.{column}",
+            (user_id, "manual"),
+        )
+        rows = await db.fetch_all(
+            """
+            SELECT uw.track_id, t.title, t.artist_name
+            FROM user_wishlist_epics uw
+            JOIN tracks t ON t.track_id = uw.track_id
+            WHERE uw.user_id=?
+            ORDER BY uw.position ASC
+            """,
+            (user_id,),
+        )
+        if not rows:
+            await interaction.response.send_message("Your wishlist is empty.", ephemeral=True)
+            return
+        options = [
+            discord.SelectOption(
+                label=f"{r['artist_name']} – {r['title']}",
+                value=r['track_id']
             )
-        else:
-            if not item:
-                await interaction.response.send_message("Select a song from your wishlist.", ephemeral=True)
-                return
-            row = await db.fetch_one(
-                "SELECT position FROM user_wishlist_epics WHERE user_id=? AND track_id=?",
-                (user_id, item),
-            )
-            if not row:
-                await interaction.response.send_message("This song is not on your wishlist.", ephemeral=True)
-                return
-            view = MoveWishView(self, user_id, item)
-            await interaction.response.send_message(
-                f"Current position: {row['position']}. Use the buttons to move the wish.",
-                view=view,
-                ephemeral=True,
-            )
+            for r in rows[:25]
+        ]
+        view = SelectWishView(self, user_id, options)
+        await interaction.response.send_message("Select a wish to move.", view=view, ephemeral=True)
 
     # Command: show profile
     @app_commands.command(name="profile", description="Show your Soundmap profile")
