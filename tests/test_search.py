@@ -41,7 +41,7 @@ def test_findcollector_artist_not_found(monkeypatch):
     interaction = DummyInteraction()
     asyncio.run(SearchCog.findcollector.callback(cog, interaction, "abc"))
 
-    assert interaction.response.message == "Artist nicht gefunden."
+    assert interaction.response.message == "Artist not found."
     asyncio.run(bot.close())
 
 
@@ -64,7 +64,7 @@ def test_findcollector_no_collectors(monkeypatch):
     interaction = DummyInteraction()
     asyncio.run(SearchCog.findcollector.callback(cog, interaction, "Artist"))
 
-    assert interaction.response.message == "Niemand hat diesen Artist als Favorit gesetzt."
+    assert interaction.response.message == "Nobody has set this artist as a favorite."
     asyncio.run(bot.close())
 
 
@@ -79,8 +79,9 @@ def test_findcollector_lists_collectors(monkeypatch):
 
     async def dummy_fetch_all(query, params):
         return [
-            {"user_id": "1", "badge": None},
+            {"user_id": "1", "badge": "Bronze"},
             {"user_id": "2", "badge": "Gold"},
+            {"user_id": "3", "badge": "Shiny"},
         ]
 
     monkeypatch.setattr(spotify, "get_canonical_artist", dummy_get_canonical_artist)
@@ -90,6 +91,11 @@ def test_findcollector_lists_collectors(monkeypatch):
     interaction = DummyInteraction()
     asyncio.run(SearchCog.findcollector.callback(cog, interaction, "Artist"))
 
-    assert "<@1>" in interaction.response.kwargs["embed"].fields[0].value
-    assert "Gold" in interaction.response.kwargs["embed"].fields[0].value
+    lines = interaction.response.kwargs["embed"].fields[0].value.split("\n")
+    assert lines[0].startswith("<@3>")
+    assert "Shiny" in lines[0]
+    assert lines[1].startswith("<@2>")
+    assert "Gold" in lines[1]
+    assert lines[2].startswith("<@1>")
+    assert "Bronze" in lines[2]
     asyncio.run(bot.close())
