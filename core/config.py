@@ -8,7 +8,8 @@ environments. The following environment variables are recognised:
   SPOTIFY_CLIENT_ID:   Spotify client ID for API access.
   SPOTIFY_CLIENT_SECRET: Spotify client secret for API access.
   DATABASE_PATH:       Filesystem path where the SQLite database should be stored.
-                       If not provided, defaults to 'bot.db' in the current working directory.
+                       Defaults to '/data/bot.db' which suits containerised deployments
+                       using a persistent volume mounted at /data.
   GUILD_ID_DEV:        Optional guild ID for rapid slash command registration during
                        development. If provided, commands are synced only to this
                        guild rather than globally.
@@ -25,9 +26,10 @@ DISCORD_TOKEN: str | None = os.environ.get("DISCORD_TOKEN")
 SPOTIFY_CLIENT_ID: str | None = os.environ.get("SPOTIFY_CLIENT_ID")
 SPOTIFY_CLIENT_SECRET: str | None = os.environ.get("SPOTIFY_CLIENT_SECRET")
 
-# Default database path. On Koyeb, this should be overridden via environment
-# variable to a persistent volume (e.g. '/data/bot.db').
-DATABASE_PATH: str = os.environ.get("DATABASE_PATH", "bot.db")
+# Default database path. It points to '/data/bot.db' so that, even if the
+# environment variable is not set, data will be written to a location intended
+# for a persistent volume in most container platforms.
+DATABASE_PATH: str = os.environ.get("DATABASE_PATH", "/data/bot.db")
 
 # Guild ID for development-only command sync. If provided, slash commands will
 # be registered exclusively on this guild, bypassing the hour-long global

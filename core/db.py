@@ -9,6 +9,7 @@ migrations using the SQL file in the migrations directory.
 
 from __future__ import annotations
 
+import logging
 import aiosqlite
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -41,6 +42,11 @@ async def init_db() -> None:
     to the project root and executes them. It is idempotent and safe to run
     multiple times; tables will only be created if they do not already exist.
     """
+    if DB_PATH.exists():
+        size = DB_PATH.stat().st_size
+        logging.info("Database path: %s (exists, %d bytes)", DB_PATH, size)
+    else:
+        logging.info("Database path: %s (missing)", DB_PATH)
     db = await get_db()
     # Resolve the path to the migration file relative to this file
     migration_path = Path(__file__).resolve().parent.parent / "migrations" / "001_init.sql"
