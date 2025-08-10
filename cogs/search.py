@@ -136,7 +136,10 @@ class SearchCog(commands.Cog):
         await interaction.response.send_message(embed=embed)
 
     # /tradehelp command
-    @app_commands.command(name="tradehelp", description="Finde potenzielle Tauschpartner basierend auf Epics und Wunschliste")
+    @app_commands.command(
+        name="tradehelp",
+        description="Find potential trade partners based on epics and wishlist",
+    )
     async def tradehelp(self, interaction: discord.Interaction, user: Optional[discord.Member] = None) -> None:
         target = user or interaction.user
         user_id = str(target.id)
@@ -174,25 +177,25 @@ class SearchCog(commands.Cog):
             rows = await db.fetch_all(query, (*my_epic_ids, user_id))
             want_what_i_have = rows
         embed = discord.Embed(
-            title=f"🤝 Trade-Hilfe für {target.display_name}",
+            title=f"🤝 Trade help for {target.display_name}",
             color=discord.Color.green(),
         )
         if have_what_i_want:
             lines = []
             for row in have_what_i_want[:20]:
                 lines.append(f"<@{row['user_id']}> — {row['artist_name']} – {row['title']} (# {row['epic_number']})")
-            more = "" if len(have_what_i_want) <= 20 else f"\n… {len(have_what_i_want) - 20} weitere Treffer"
-            embed.add_field(name="Sie besitzen, was du suchst", value="\n".join(lines) + more, inline=False)
+            more = "" if len(have_what_i_want) <= 20 else f"\n… {len(have_what_i_want) - 20} more matches"
+            embed.add_field(name="They have what you want", value="\n".join(lines) + more, inline=False)
         else:
-            embed.add_field(name="Sie besitzen, was du suchst", value="Keine Treffer", inline=False)
+            embed.add_field(name="They have what you want", value="No matches", inline=False)
         if want_what_i_have:
             lines = []
             for row in want_what_i_have[:20]:
                 lines.append(f"<@{row['user_id']}> — {row['artist_name']} – {row['title']}")
-            more = "" if len(want_what_i_have) <= 20 else f"\n… {len(want_what_i_have) - 20} weitere Treffer"
-            embed.add_field(name="Sie suchen, was du besitzt", value="\n".join(lines) + more, inline=False)
+            more = "" if len(want_what_i_have) <= 20 else f"\n… {len(want_what_i_have) - 20} more matches"
+            embed.add_field(name="They want what you have", value="\n".join(lines) + more, inline=False)
         else:
-            embed.add_field(name="Sie suchen, was du besitzt", value="Keine Treffer", inline=False)
+            embed.add_field(name="They want what you have", value="No matches", inline=False)
         await interaction.response.send_message(embed=embed, ephemeral=(user is not None and user.id != interaction.user.id))
 
     # /findcollector command
