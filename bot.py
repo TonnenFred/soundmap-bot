@@ -75,6 +75,7 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 async def on_ready():
     # Initialise the database. This runs migrations if necessary.
     await db_module.init_db()
+    logging.info("Database path: %s", db_module.DB_PATH)
     # Load cogs if not already loaded
     # Load only once to avoid duplication on reconnect
     if not bot.get_cog("ProfileCog"):
