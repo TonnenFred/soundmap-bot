@@ -66,8 +66,8 @@ async def init_db() -> None:
 
     # Additional columns for sorting and manual ordering
     alter_statements = [
-        "ALTER TABLE users ADD COLUMN artist_sort_mode TEXT NOT NULL DEFAULT 'name'",
-        "ALTER TABLE users ADD COLUMN wish_sort_mode TEXT NOT NULL DEFAULT 'name'",
+        "ALTER TABLE users ADD COLUMN artist_sort_mode TEXT NOT NULL DEFAULT 'manual'",
+        "ALTER TABLE users ADD COLUMN wish_sort_mode TEXT NOT NULL DEFAULT 'manual'",
         "ALTER TABLE user_wishlist_epics ADD COLUMN added_at TEXT DEFAULT CURRENT_TIMESTAMP",
         "ALTER TABLE user_wishlist_epics ADD COLUMN position INTEGER",
         "ALTER TABLE user_fav_artists ADD COLUMN added_at TEXT DEFAULT CURRENT_TIMESTAMP",

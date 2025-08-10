@@ -228,29 +228,26 @@ class ProfileCog(commands.Cog):
         )
 
     async def get_next_position(self, user_id: str) -> int:
-        """Return the next manual position for a new Epic for the given user."""
-        row = await db.fetch_one(
-            "SELECT COALESCE(MAX(position), 0) AS maxp FROM user_epics WHERE user_id=?",
+        """Shift existing epics down and return the top position for a new Epic."""
+        await db.execute(
+            "UPDATE user_epics SET position = position + 1 WHERE user_id=?",
             (user_id,),
         )
-        maxp = row["maxp"] if row and row["maxp"] is not None else 0
-        return maxp + 1
+        return 1
 
     async def get_next_artist_position(self, user_id: str) -> int:
-        row = await db.fetch_one(
-            "SELECT COALESCE(MAX(position),0) AS maxp FROM user_fav_artists WHERE user_id=?",
+        await db.execute(
+            "UPDATE user_fav_artists SET position = position + 1 WHERE user_id=?",
             (user_id,),
         )
-        maxp = row["maxp"] if row and row["maxp"] is not None else 0
-        return maxp + 1
+        return 1
 
     async def get_next_wish_position(self, user_id: str) -> int:
-        row = await db.fetch_one(
-            "SELECT COALESCE(MAX(position),0) AS maxp FROM user_wishlist_epics WHERE user_id=?",
+        await db.execute(
+            "UPDATE user_wishlist_epics SET position = position + 1 WHERE user_id=?",
             (user_id,),
         )
-        maxp = row["maxp"] if row and row["maxp"] is not None else 0
-        return maxp + 1
+        return 1
 
     async def move_epic_to(self, user_id: str, track_id: str, epic_number: int, new_pos: int) -> None:
         """Reposition an Epic in manual ordering, adjusting other positions accordingly."""
@@ -399,28 +396,17 @@ class ProfileCog(commands.Cog):
                 (new_pos, user_id, track_id),
             )
 
-    async def reorder_epics(self, user_id: str, mode: str) -> None:
-        if mode == "name":
-            rows = await db.fetch_all(
-                """
-                SELECT ue.track_id, ue.epic_number
-                FROM user_epics ue
-                JOIN tracks t ON t.track_id = ue.track_id
-                WHERE ue.user_id=?
-                ORDER BY t.title COLLATE NOCASE ASC, ue.epic_number ASC
-                """,
-                (user_id,),
-            )
-        else:
-            rows = await db.fetch_all(
-                """
-                SELECT track_id, epic_number
-                FROM user_epics
-                WHERE user_id=?
-                ORDER BY added_at ASC, rowid ASC
-                """,
-                (user_id,),
-            )
+    async def reorder_epics(self, user_id: str) -> None:
+        rows = await db.fetch_all(
+            """
+            SELECT ue.track_id, ue.epic_number
+            FROM user_epics ue
+            JOIN tracks t ON t.track_id = ue.track_id
+            WHERE ue.user_id=?
+            ORDER BY t.title COLLATE NOCASE ASC, ue.epic_number ASC
+            """,
+            (user_id,),
+        )
         async with db.transaction():
             for idx, r in enumerate(rows, start=1):
                 await db.execute(
@@ -428,28 +414,17 @@ class ProfileCog(commands.Cog):
                     (idx, user_id, r["track_id"], r["epic_number"]),
                 )
 
-    async def reorder_artists(self, user_id: str, mode: str) -> None:
-        if mode == "name":
-            rows = await db.fetch_all(
-                """
-                SELECT ufa.artist_id
-                FROM user_fav_artists ufa
-                JOIN artists a ON a.artist_id = ufa.artist_id
-                WHERE ufa.user_id=?
-                ORDER BY a.name COLLATE NOCASE ASC
-                """,
-                (user_id,),
-            )
-        else:
-            rows = await db.fetch_all(
-                """
-                SELECT artist_id
-                FROM user_fav_artists
-                WHERE user_id=?
-                ORDER BY added_at ASC, rowid ASC
-                """,
-                (user_id,),
-            )
+    async def reorder_artists(self, user_id: str) -> None:
+        rows = await db.fetch_all(
+            """
+            SELECT ufa.artist_id
+            FROM user_fav_artists ufa
+            JOIN artists a ON a.artist_id = ufa.artist_id
+            WHERE ufa.user_id=?
+            ORDER BY a.name COLLATE NOCASE ASC
+            """,
+            (user_id,),
+        )
         async with db.transaction():
             for idx, r in enumerate(rows, start=1):
                 await db.execute(
@@ -457,28 +432,17 @@ class ProfileCog(commands.Cog):
                     (idx, user_id, r["artist_id"]),
                 )
 
-    async def reorder_wishlist(self, user_id: str, mode: str) -> None:
-        if mode == "name":
-            rows = await db.fetch_all(
-                """
-                SELECT uw.track_id
-                FROM user_wishlist_epics uw
-                JOIN tracks t ON t.track_id = uw.track_id
-                WHERE uw.user_id=?
-                ORDER BY t.title COLLATE NOCASE ASC
-                """,
-                (user_id,),
-            )
-        else:
-            rows = await db.fetch_all(
-                """
-                SELECT track_id
-                FROM user_wishlist_epics
-                WHERE user_id=?
-                ORDER BY added_at ASC, rowid ASC
-                """,
-                (user_id,),
-            )
+    async def reorder_wishlist(self, user_id: str) -> None:
+        rows = await db.fetch_all(
+            """
+            SELECT uw.track_id
+            FROM user_wishlist_epics uw
+            JOIN tracks t ON t.track_id = uw.track_id
+            WHERE uw.user_id=?
+            ORDER BY t.title COLLATE NOCASE ASC
+            """,
+            (user_id,),
+        )
         async with db.transaction():
             for idx, r in enumerate(rows, start=1):
                 await db.execute(
@@ -892,7 +856,6 @@ class ProfileCog(commands.Cog):
     @app_commands.choices(
         mode=[
             app_commands.Choice(name="Sort by name", value="name"),
-            app_commands.Choice(name="Sort by added order", value="added"),
             app_commands.Choice(name="Manual sort", value="manual"),
         ]
     )
@@ -900,12 +863,12 @@ class ProfileCog(commands.Cog):
         user_id = str(interaction.user.id)
         await self.ensure_user(user_id)
         column = "artist_sort_mode"
-        if mode.value != "manual":
+        if mode.value == "name":
             await db.execute(
                 f"INSERT INTO users(user_id, {column}) VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET {column}=excluded.{column}",
                 (user_id, mode.value),
             )
-            await self.reorder_artists(user_id, mode.value)
+            await self.reorder_artists(user_id)
             await interaction.response.send_message(f"✅ Artists sorted by {mode.name}.", ephemeral=True)
             return
         await db.execute(
@@ -933,7 +896,6 @@ class ProfileCog(commands.Cog):
     @app_commands.choices(
         mode=[
             app_commands.Choice(name="Sort by name", value="name"),
-            app_commands.Choice(name="Sort by added order", value="added"),
             app_commands.Choice(name="Manual sort", value="manual"),
         ]
     )
@@ -941,12 +903,12 @@ class ProfileCog(commands.Cog):
         user_id = str(interaction.user.id)
         await self.ensure_user(user_id)
         column = "epic_sort_mode"
-        if mode.value != "manual":
+        if mode.value == "name":
             await db.execute(
                 f"INSERT INTO users(user_id, {column}) VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET {column}=excluded.{column}",
                 (user_id, mode.value),
             )
-            await self.reorder_epics(user_id, mode.value)
+            await self.reorder_epics(user_id)
             await interaction.response.send_message(f"✅ Epics sorted by {mode.name}.", ephemeral=True)
             return
         await db.execute(
@@ -980,7 +942,6 @@ class ProfileCog(commands.Cog):
     @app_commands.choices(
         mode=[
             app_commands.Choice(name="Sort by name", value="name"),
-            app_commands.Choice(name="Sort by added order", value="added"),
             app_commands.Choice(name="Manual sort", value="manual"),
         ]
     )
@@ -988,12 +949,12 @@ class ProfileCog(commands.Cog):
         user_id = str(interaction.user.id)
         await self.ensure_user(user_id)
         column = "wish_sort_mode"
-        if mode.value != "manual":
+        if mode.value == "name":
             await db.execute(
                 f"INSERT INTO users(user_id, {column}) VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET {column}=excluded.{column}",
                 (user_id, mode.value),
             )
-            await self.reorder_wishlist(user_id, mode.value)
+            await self.reorder_wishlist(user_id)
             await interaction.response.send_message(f"✅ Wishlist sorted by {mode.name}.", ephemeral=True)
             return
         await db.execute(
@@ -1035,9 +996,9 @@ class ProfileCog(commands.Cog):
             (user_id,),
         )
         username = row["username"] if row else None
-        epic_sort = row["epic_sort_mode"] if row else "added"
-        artist_sort = row["artist_sort_mode"] if row else "name"
-        wish_sort = row["wish_sort_mode"] if row else "name"
+        epic_sort = (row["epic_sort_mode"] if row else None) or "manual"
+        artist_sort = (row["artist_sort_mode"] if row else None) or "manual"
+        wish_sort = (row["wish_sort_mode"] if row else None) or "manual"
         # Fetch epics sorted accordingly
         if epic_sort == "name":
             epics = await db.fetch_all(
@@ -1050,7 +1011,7 @@ class ProfileCog(commands.Cog):
                 """,
                 (user_id,),
             )
-        elif epic_sort == "manual":
+        else:
             epics = await db.fetch_all(
                 """
                 SELECT ue.epic_number, t.title, t.artist_name, t.url
@@ -1058,17 +1019,6 @@ class ProfileCog(commands.Cog):
                 JOIN tracks t ON t.track_id = ue.track_id
                 WHERE ue.user_id=?
                 ORDER BY ue.position ASC, ue.epic_number ASC
-                """,
-                (user_id,),
-            )
-        else:
-            epics = await db.fetch_all(
-                """
-                SELECT ue.epic_number, t.title, t.artist_name, t.url, ue.added_at
-                FROM user_epics ue
-                JOIN tracks t ON t.track_id = ue.track_id
-                WHERE ue.user_id=?
-                ORDER BY ue.added_at ASC, ue.rowid ASC
                 """,
                 (user_id,),
             )
@@ -1084,17 +1034,6 @@ class ProfileCog(commands.Cog):
                 """,
                 (user_id,),
             )
-        elif wish_sort == "manual":
-            wishlist = await db.fetch_all(
-                """
-                SELECT t.title, t.artist_name, uw.note, t.url
-                FROM user_wishlist_epics uw
-                JOIN tracks t ON t.track_id = uw.track_id
-                WHERE uw.user_id=?
-                ORDER BY uw.position ASC
-                """,
-                (user_id,),
-            )
         else:
             wishlist = await db.fetch_all(
                 """
@@ -1102,7 +1041,7 @@ class ProfileCog(commands.Cog):
                 FROM user_wishlist_epics uw
                 JOIN tracks t ON t.track_id = uw.track_id
                 WHERE uw.user_id=?
-                ORDER BY uw.added_at ASC, uw.rowid ASC
+                ORDER BY uw.position ASC
                 """,
                 (user_id,),
             )
@@ -1118,17 +1057,6 @@ class ProfileCog(commands.Cog):
                 """,
                 (user_id,),
             )
-        elif artist_sort == "manual":
-            favs = await db.fetch_all(
-                """
-                SELECT a.name, ufa.badge
-                FROM user_fav_artists ufa
-                JOIN artists a ON a.artist_id = ufa.artist_id
-                WHERE ufa.user_id=?
-                ORDER BY ufa.position ASC
-                """,
-                (user_id,),
-            )
         else:
             favs = await db.fetch_all(
                 """
@@ -1136,7 +1064,7 @@ class ProfileCog(commands.Cog):
                 FROM user_fav_artists ufa
                 JOIN artists a ON a.artist_id = ufa.artist_id
                 WHERE ufa.user_id=?
-                ORDER BY ufa.added_at ASC, ufa.rowid ASC
+                ORDER BY ufa.position ASC
                 """,
                 (user_id,),
             )

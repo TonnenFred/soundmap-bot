@@ -65,9 +65,9 @@ def test_profile_shows_username(monkeypatch):
     async def dummy_fetch_one(query, params=()):
         return {
             "username": "PlayerX",
-            "epic_sort_mode": "added",
-            "artist_sort_mode": "name",
-            "wish_sort_mode": "name",
+            "epic_sort_mode": "manual",
+            "artist_sort_mode": "manual",
+            "wish_sort_mode": "manual",
         }
 
     async def dummy_fetch_all(query, params=()):
