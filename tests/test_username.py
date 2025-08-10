@@ -79,7 +79,7 @@ def test_profile_shows_username(monkeypatch):
     asyncio.run(ProfileCog.profile.callback(cog, interaction, None))
     embed = interaction.response.kwargs["embed"]
     assert embed.title == "🎵 User1's Collection"
-    assert embed.fields[0].name == "👤 SM-Username"
+    assert embed.fields[0].name == "👤 Soundmap Username"
     assert embed.fields[0].value == "PlayerX"
     asyncio.run(bot.close())
 

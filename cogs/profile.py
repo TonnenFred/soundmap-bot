@@ -539,10 +539,16 @@ class ProfileCog(commands.Cog):
         # Build embed
         embed = discord.Embed(
             title=f"🎵 {member.display_name}'s Collection",
+            description=f"Soundmap profile of {member.display_name}",
             color=discord.Color.purple(),
         )
         if username:
-            embed.insert_field_at(0, name="👤 SM-Username", value=username, inline=False)
+            embed.insert_field_at(
+                0,
+                name="👤 Soundmap Username",
+                value=username,
+                inline=False,
+            )
         # Epics list
         if epics:
             epic_lines: list[str] = []
