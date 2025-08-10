@@ -21,6 +21,7 @@ DB_PATH = Path(DATABASE_PATH).expanduser()
 DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 _db: aiosqlite.Connection | None = None
+_tx_depth: int = 0  # Anzahl aktuell aktiver, EXPLIZITER Transaktionsblöcke
 
 
 async def get_db() -> aiosqlite.Connection:
@@ -67,9 +68,9 @@ async def fetch_one(query: str, params: tuple | list = ()) -> aiosqlite.Row | No
     db = await get_db()
     async with db.execute(query, params) as cursor:
         row = await cursor.fetchone()
-    # End the implicit transaction started by the SELECT unless we're inside an
-    # explicit transaction managed by :func:`transaction`.
-    if not db.in_transaction:
+    # SQLite startet auch für SELECTs eine implizite Transaktion. Beende sie,
+    # solange wir NICHT in einem eigenen expliziten Block sind.
+    if db.in_transaction and _tx_depth == 0:
         await db.commit()
     return row
 
@@ -82,9 +83,9 @@ async def fetch_all(query: str, params: tuple | list = ()) -> list[aiosqlite.Row
     db = await get_db()
     async with db.execute(query, params) as cursor:
         rows = await cursor.fetchall()
-    # Like ``fetch_one``, ensure we leave autocommit mode if the SELECT started
-    # an implicit transaction.
-    if not db.in_transaction:
+    # Wie bei fetch_one: implizite Transaktion nach SELECT beenden,
+    # außer wir sind in einem expliziten Block.
+    if db.in_transaction and _tx_depth == 0:
         await db.commit()
     return rows
 
@@ -99,10 +100,9 @@ async def execute(query: str, params: tuple | list = ()) -> None:
     """
     db = await get_db()
     await db.execute(query, params)
-    # Only commit if we're not already inside an explicit transaction. This
-    # keeps ``transaction`` functional by deferring the commit until the context
-    # manager completes.
-    if not db.in_transaction:
+    # Nur committen, wenn wir NICHT in einem expliziten Block sind.
+    # (db.in_transaction kann auch wegen impliziter SELECT-Transaktionen True sein.)
+    if _tx_depth == 0:
         await db.commit()
 
 
@@ -120,12 +120,22 @@ async def transaction():
     rolled back and the exception is re-raised.
     """
     db = await get_db()
-    # Begin a transaction manually. aiosqlite autocommit is disabled inside the context.
-    await db.execute("BEGIN")
+    global _tx_depth
+    outermost = (_tx_depth == 0)
+    if outermost:
+        await db.execute("BEGIN")
+    _tx_depth += 1
     try:
         yield
     except Exception:
-        await db.rollback()
+        # Nur die äußerste Transaktion rollt zurück.
+        if outermost:
+            await db.rollback()
+        # Tiefe sauber zurücksetzen, dann Ausnahme weiterreichen
+        _tx_depth = max(0, _tx_depth - 1)
         raise
     else:
-        await db.commit()
+        _tx_depth -= 1
+        # Nur die äußerste Transaktion committet.
+        if outermost:
+            await db.commit()
