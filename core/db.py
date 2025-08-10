@@ -21,7 +21,7 @@ DB_PATH = Path(DATABASE_PATH).expanduser()
 DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 _db: aiosqlite.Connection | None = None
-_tx_depth: int = 0  # Anzahl aktuell aktiver, EXPLIZITER Transaktionsblöcke
+_tx_depth: int = 0  # Number of currently active explicit transaction blocks
 
 
 async def get_db() -> aiosqlite.Connection:
@@ -68,8 +68,8 @@ async def fetch_one(query: str, params: tuple | list = ()) -> aiosqlite.Row | No
     db = await get_db()
     async with db.execute(query, params) as cursor:
         row = await cursor.fetchone()
-    # SQLite startet auch für SELECTs eine implizite Transaktion. Beende sie,
-    # solange wir NICHT in einem eigenen expliziten Block sind.
+    # SQLite starts an implicit transaction even for SELECT statements. End it
+    # as long as we are NOT inside our own explicit block.
     if db.in_transaction and _tx_depth == 0:
         await db.commit()
     return row
@@ -83,8 +83,8 @@ async def fetch_all(query: str, params: tuple | list = ()) -> list[aiosqlite.Row
     db = await get_db()
     async with db.execute(query, params) as cursor:
         rows = await cursor.fetchall()
-    # Wie bei fetch_one: implizite Transaktion nach SELECT beenden,
-    # außer wir sind in einem expliziten Block.
+    # As with fetch_one: end the implicit transaction after a SELECT
+    # unless we are in an explicit block.
     if db.in_transaction and _tx_depth == 0:
         await db.commit()
     return rows
@@ -100,8 +100,8 @@ async def execute(query: str, params: tuple | list = ()) -> None:
     """
     db = await get_db()
     await db.execute(query, params)
-    # Nur committen, wenn wir NICHT in einem expliziten Block sind.
-    # (db.in_transaction kann auch wegen impliziter SELECT-Transaktionen True sein.)
+    # Only commit when we are NOT in an explicit block.
+    # (db.in_transaction may be True because of implicit SELECT transactions.)
     if _tx_depth == 0:
         await db.commit()
 
@@ -128,14 +128,14 @@ async def transaction():
     try:
         yield
     except Exception:
-        # Nur die äußerste Transaktion rollt zurück.
+        # Only the outermost transaction rolls back.
         if outermost:
             await db.rollback()
-        # Tiefe sauber zurücksetzen, dann Ausnahme weiterreichen
+        # Cleanly reset depth before re-raising the exception
         _tx_depth = max(0, _tx_depth - 1)
         raise
     else:
         _tx_depth -= 1
-        # Nur die äußerste Transaktion committet.
+        # Only the outermost transaction commits.
         if outermost:
             await db.commit()
