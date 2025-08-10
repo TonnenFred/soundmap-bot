@@ -187,7 +187,7 @@ class ProfileCog(commands.Cog):
         class EpicModal(discord.ui.Modal, title="Epic-Nummer festlegen"):
             epic_number = discord.ui.TextInput(label="Epic #", placeholder="z.B. 3", required=True)
 
-            def __init__(self, cog: ProfileCog, track_info: dict[str, str]):
+            def __init__(self, cog: "ProfileCog", track_info: dict[str, str]):
                 super().__init__()
                 self.cog = cog
                 self.track = track_info
@@ -196,19 +196,28 @@ class ProfileCog(commands.Cog):
                 try:
                     num = int(str(self.epic_number).strip())
                 except ValueError:
-                    await modal_interaction.response.send_message("Ungültige Epic-Nummer.", ephemeral=True)
+                    await modal_interaction.response.send_message(
+                        "Ungültige Epic-Nummer.", ephemeral=True
+                    )
                     return
                 if num <= 0:
-                    await modal_interaction.response.send_message("Epic-Nummer muss > 0 sein.", ephemeral=True)
+                    await modal_interaction.response.send_message(
+                        "Epic-Nummer muss > 0 sein.", ephemeral=True
+                    )
                     return
                 user_id = str(modal_interaction.user.id)
                 await self.cog.ensure_user(user_id)
-                await spotify.upsert_track(self.track['track_id'], self.track['title'], self.track['artist_name'], self.track['url'])
+                await spotify.upsert_track(
+                    self.track["track_id"],
+                    self.track["title"],
+                    self.track["artist_name"],
+                    self.track["url"],
+                )
                 exists = await db.fetch_one(
                     """
                     SELECT 1 FROM user_epics WHERE user_id=? AND track_id=? AND epic_number=?
                     """,
-                    (user_id, self.track['track_id'], num),
+                    (user_id, self.track["track_id"], num),
                 )
                 if exists:
                     await modal_interaction.response.send_message(
@@ -222,7 +231,7 @@ class ProfileCog(commands.Cog):
                     INSERT INTO user_epics(user_id, track_id, epic_number, position)
                     VALUES(?,?,?,?)
                     """,
-                    (user_id, self.track['track_id'], num, next_pos),
+                    (user_id, self.track["track_id"], num, next_pos),
                 )
                 await modal_interaction.response.send_message(
                     f"✅ Epic hinzugefügt: **{self.track['artist_name']} – {self.track['title']}** (# {num})",
@@ -532,7 +541,10 @@ class ProfileCog(commands.Cog):
         if epics:
             epic_lines: list[str] = []
             for i, e in enumerate(epics[:15]):  # show up to 15
-                epic_lines.append(f"#{e['epic_number']}: {e['artist_name']} – {e['title']}")
+                # Display format: "Artist – Title #Number" instead of "#Number: Artist – Title"
+                epic_lines.append(
+                    f"{e['artist_name']} – {e['title']} #{e['epic_number']}"
+                )
             more = "" if len(epics) <= 15 else f"\n… {len(epics) - 15} weitere"
             embed.add_field(name=f"💎 Epics ({len(epics)})", value="\n".join(epic_lines) + more, inline=False)
         else:
