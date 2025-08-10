@@ -32,6 +32,18 @@ BADGES = [
     "Shiny",
 ]
 
+# Mapping of badges to their display emojis.
+BADGE_EMOJIS = {
+    "Bronze": "🟤",
+    "Silver": "⚪",
+    "Gold": "🟠",
+    "Platinum": "🟣",
+    "Diamond": "🔵",
+    "Legendary": "🔴",
+    "VIP": "🟢",
+    "Shiny": "✨",
+}
+
 
 class MoveEpicView(discord.ui.View):
     """Simple UI view offering buttons to move an Epic up or down."""
@@ -1121,7 +1133,8 @@ class ProfileCog(commands.Cog):
             fa_lines: list[str] = []
             for a in favs[:15]:
                 badge = a["badge"]
-                badge_str = f" — {badge}" if badge else ""
+                badge_emoji = BADGE_EMOJIS.get(badge, "")
+                badge_str = f" — {badge_emoji} {badge}" if badge else ""
                 fa_lines.append(f"{a['name']}{badge_str}")
             more = "" if len(favs) <= 15 else f"\n… {len(favs) - 15} more"
             embed.add_field(name=f"🌟 Favorite Artists ({len(favs)})", value="\n".join(fa_lines) + more, inline=False)

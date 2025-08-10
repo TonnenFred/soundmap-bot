@@ -23,14 +23,14 @@ class DummyResponse:
         self.message = None
         self.kwargs = None
 
-    async def send_message(self, message, **kwargs):
+    async def send_message(self, message=None, **kwargs):
         self.message = message
         self.kwargs = kwargs
 
 
 class DummyInteraction:
     def __init__(self, user_id=1):
-        self.user = types.SimpleNamespace(id=user_id)
+        self.user = types.SimpleNamespace(id=user_id, display_name=f"User{user_id}")
         self.response = DummyResponse()
 
 
@@ -187,4 +187,37 @@ def test_addartist_sets_badge(monkeypatch):
     assert "badge" in dummy_execute.query
     assert dummy_execute.params[2] == "Gold"
     assert "Gold" in interaction.response.message
+    asyncio.run(bot.close())
+
+
+def test_profile_shows_badge_with_emoji(monkeypatch):
+    intents = discord.Intents.none()
+    bot = commands.Bot(command_prefix="!", intents=intents)
+    cog = ProfileCog(bot)
+
+    async def dummy_fetch_one(query, params=()):
+        return {
+            "username": "PlayerX",
+            "epic_sort_mode": "added",
+            "artist_sort_mode": "name",
+            "wish_sort_mode": "name",
+        }
+
+    async def dummy_fetch_all(query, params=()):
+        if "user_fav_artists" in query:
+            return [{"name": "Artist", "badge": "Gold"}]
+        return []
+
+    async def dummy_ensure_user(self, uid):
+        pass
+
+    monkeypatch.setattr(db, "fetch_one", dummy_fetch_one)
+    monkeypatch.setattr(db, "fetch_all", dummy_fetch_all)
+    monkeypatch.setattr(ProfileCog, "ensure_user", dummy_ensure_user)
+
+    interaction = DummyInteraction()
+    asyncio.run(ProfileCog.profile.callback(cog, interaction, None))
+    embed = interaction.response.kwargs["embed"]
+    field = next(f for f in embed.fields if f.name.startswith("🌟 Favorite Artists"))
+    assert field.value == "Artist — 🟠 Gold"
     asyncio.run(bot.close())
