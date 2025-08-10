@@ -527,7 +527,10 @@ class ProfileCog(commands.Cog):
         if epics:
             epic_lines: list[str] = []
             for i, e in enumerate(epics[:15]):  # show up to 15
-                epic_lines.append(f"#{e['epic_number']}: {e['artist_name']} – {e['title']}")
+                # Display format: "Artist – Title #Number" instead of "#Number: Artist – Title"
+                epic_lines.append(
+                    f"{e['artist_name']} – {e['title']} #{e['epic_number']}"
+                )
             more = "" if len(epics) <= 15 else f"\n… {len(epics) - 15} weitere"
             embed.add_field(name=f"💎 Epics ({len(epics)})", value="\n".join(epic_lines) + more, inline=False)
         else:
