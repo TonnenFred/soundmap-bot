@@ -72,7 +72,12 @@ async def fetch_one(query: str, params: tuple | list = ()) -> aiosqlite.Row | No
     """
     db = await get_db()
     async with db.execute(query, params) as cursor:
-        return await cursor.fetchone()
+        row = await cursor.fetchone()
+    # End the implicit transaction started by the SELECT unless we're inside an
+    # explicit transaction managed by :func:`transaction`.
+    if not db.in_transaction:
+        await db.commit()
+    return row
 
 
 async def fetch_all(query: str, params: tuple | list = ()) -> list[aiosqlite.Row]:
@@ -82,7 +87,12 @@ async def fetch_all(query: str, params: tuple | list = ()) -> list[aiosqlite.Row
     """
     db = await get_db()
     async with db.execute(query, params) as cursor:
-        return await cursor.fetchall()
+        rows = await cursor.fetchall()
+    # Like ``fetch_one``, ensure we leave autocommit mode if the SELECT started
+    # an implicit transaction.
+    if not db.in_transaction:
+        await db.commit()
+    return rows
 
 
 async def execute(query: str, params: tuple | list = ()) -> None:
