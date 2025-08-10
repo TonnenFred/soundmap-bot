@@ -71,6 +71,14 @@ intents.presences = True  # required for wishcurrent/favartistcurrent
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 
+@bot.tree.command(name="commands", description="List all available commands")
+async def list_commands(interaction: discord.Interaction) -> None:
+    """Send a list of all registered slash commands."""
+    cmds = sorted(interaction.client.tree.get_commands(), key=lambda c: c.name)
+    lines = [f"/{c.name} - {c.description}" for c in cmds]
+    await interaction.response.send_message("\n".join(lines), ephemeral=True)
+
+
 @bot.event
 async def on_ready():
     # Initialise the database. This runs migrations if necessary.
