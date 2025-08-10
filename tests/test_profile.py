@@ -198,9 +198,9 @@ def test_profile_shows_badge_with_emoji(monkeypatch):
     async def dummy_fetch_one(query, params=()):
         return {
             "username": "PlayerX",
-            "epic_sort_mode": "added",
+            "epic_sort_mode": "manual",
             "artist_sort_mode": "name",
-            "wish_sort_mode": "name",
+            "wish_sort_mode": "manual",
         }
 
     async def dummy_fetch_all(query, params=()):
