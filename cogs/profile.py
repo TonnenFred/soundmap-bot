@@ -289,38 +289,37 @@ class ProfileCog(commands.Cog):
             ephemeral=True,
         )
 
-    # Command: add an Epic to the wishlist
-    @app_commands.command(name="addwish_epic", description="Füge einen Song zu deiner Wunschliste hinzu")
-    @app_commands.describe(track="Der Song, den du dir wünschst", note="Optionale Notiz")
-    @app_commands.autocomplete(track=autocomplete_tracks)
-    async def addwish_epic(self, interaction: discord.Interaction, track: str, note: Optional[str] = None) -> None:
+    # Command: add a song to the wishlist via Spotify search
+    @app_commands.command(name="addwish", description="Füge einen Song zu deiner Wunschliste hinzu")
+    @app_commands.describe(track="Der Song (über Autocomplete auswählbar)", note="Optionale Notiz")
+    @app_commands.autocomplete(track=autocomplete_spotify_tracks)
+    async def addwish(self, interaction: discord.Interaction, track: str, note: Optional[str] = None) -> None:
         user_id = str(interaction.user.id)
         await self.ensure_user(user_id)
-        # Ensure track exists in DB; if not, create a dummy entry from Spotify?
-        exists = await db.fetch_one(
-            "SELECT 1 FROM tracks WHERE track_id=?",
-            (track,),
-        )
-        if not exists:
-            await db.execute(
-                "INSERT INTO tracks(track_id, title, artist_name, url) VALUES(?,?,?,?)",
-                (track, "Unbekannter Titel", "Unbekannter Künstler", f"https://open.spotify.com/track/{track}"),
-            )
+        # Fetch track details from Spotify
+        try:
+            t = await spotify.get_track(track)
+        except Exception:
+            t = None
+        if not t:
+            await interaction.response.send_message("Song nicht gefunden.", ephemeral=True)
+            return
+        await spotify.upsert_track(t["track_id"], t["title"], t["artist_name"], t["url"])
         # Insert or update wishlist note
         row = await db.fetch_one(
             "SELECT 1 FROM user_wishlist_epics WHERE user_id=? AND track_id=?",
-            (user_id, track),
+            (user_id, t["track_id"]),
         )
         if row:
             await db.execute(
                 "UPDATE user_wishlist_epics SET note=? WHERE user_id=? AND track_id=?",
-                (note, user_id, track),
+                (note, user_id, t["track_id"]),
             )
             msg = "Die Notiz deiner Wunschliste wurde aktualisiert."
         else:
             await db.execute(
                 "INSERT INTO user_wishlist_epics(user_id, track_id, note) VALUES(?,?,?)",
-                (user_id, track, note),
+                (user_id, t["track_id"], note),
             )
             msg = "✅ Zur Wunschliste hinzugefügt."
         await interaction.response.send_message(msg, ephemeral=True)
