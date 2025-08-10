@@ -538,7 +538,7 @@ class ProfileCog(commands.Cog):
             color=discord.Color.purple(),
         )
         if username:
-            embed.insert_field_at(0, name="👤 Username", value=username, inline=False)
+            embed.insert_field_at(0, name="👤 SM-Username", value=username, inline=False)
         # Epics list
         if epics:
             epic_lines: list[str] = []

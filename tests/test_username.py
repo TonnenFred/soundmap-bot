@@ -78,7 +78,7 @@ def test_profile_shows_username(monkeypatch):
     interaction = DummyInteraction()
     asyncio.run(ProfileCog.profile.callback(cog, interaction, None))
     embed = interaction.response.kwargs["embed"]
-    assert embed.fields[0].name == "👤 Username"
+    assert embed.fields[0].name == "👤 SM-Username"
     assert embed.fields[0].value == "PlayerX"
     asyncio.run(bot.close())
 
