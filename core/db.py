@@ -71,8 +71,16 @@ async def fetch_one(query: str, params: tuple | list = ()) -> aiosqlite.Row | No
     Returns None if no row matches the query.
     """
     db = await get_db()
+    in_tx = db.in_transaction
     async with db.execute(query, params) as cursor:
-        return await cursor.fetchone()
+        row = await cursor.fetchone()
+    # ``aiosqlite`` implicitly opens a transaction for every statement. If we
+    # weren't already in an explicit transaction we need to close this
+    # autocommit transaction, otherwise subsequent ``BEGIN`` statements would
+    # fail with "cannot start a transaction within a transaction".
+    if not in_tx:
+        await db.commit()
+    return row
 
 
 async def fetch_all(query: str, params: tuple | list = ()) -> list[aiosqlite.Row]:
@@ -81,8 +89,14 @@ async def fetch_all(query: str, params: tuple | list = ()) -> list[aiosqlite.Row
     Returns an empty list if no rows match.
     """
     db = await get_db()
+    in_tx = db.in_transaction
     async with db.execute(query, params) as cursor:
-        return await cursor.fetchall()
+        rows = await cursor.fetchall()
+    # See ``fetch_one`` for rationale. Commit only when we started the
+    # transaction implicitly.
+    if not in_tx:
+        await db.commit()
+    return rows
 
 
 async def execute(query: str, params: tuple | list = ()) -> None:
@@ -94,11 +108,12 @@ async def execute(query: str, params: tuple | list = ()) -> None:
     committing independently.
     """
     db = await get_db()
+    in_tx = db.in_transaction
     await db.execute(query, params)
-    # Only commit if we're not already inside an explicit transaction. This
-    # keeps ``transaction`` functional by deferring the commit until the context
-    # manager completes.
-    if not db.in_transaction:
+    # Commit immediately when not already inside an explicit transaction. This
+    # mirrors the behaviour of autocommit mode and keeps ``transaction``
+    # functional by deferring the final commit until exit.
+    if not in_tx:
         await db.commit()
 
 
