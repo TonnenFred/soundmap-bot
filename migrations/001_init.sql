@@ -4,9 +4,6 @@
 CREATE TABLE IF NOT EXISTS users (
   user_id TEXT PRIMARY KEY,
   username TEXT,
-  epic_sort_mode TEXT NOT NULL DEFAULT 'manual',
-  artist_sort_mode TEXT NOT NULL DEFAULT 'manual',
-  wish_sort_mode TEXT NOT NULL DEFAULT 'manual',
   created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 

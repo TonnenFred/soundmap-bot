@@ -196,12 +196,7 @@ def test_profile_shows_badge_with_emoji(monkeypatch):
     cog = ProfileCog(bot)
 
     async def dummy_fetch_one(query, params=()):
-        return {
-            "username": "PlayerX",
-            "epic_sort_mode": "manual",
-            "artist_sort_mode": "name",
-            "wish_sort_mode": "manual",
-        }
+        return {"username": "PlayerX"}
 
     async def dummy_fetch_all(query, params=()):
         if "user_fav_artists" in query:
