@@ -10,6 +10,8 @@ It also provides artist search helpers used for validation and autocomplete.
 
 from __future__ import annotations
 
+import asyncio
+import atexit
 import aiohttp
 import base64
 import time
@@ -28,6 +30,33 @@ async def _get_session() -> aiohttp.ClientSession:
     if _session is None or _session.closed:
         _session = aiohttp.ClientSession()
     return _session
+
+
+async def _close_session() -> None:
+    """Close the global :class:`aiohttp.ClientSession` if it exists."""
+    global _session
+    if _session and not _session.closed:
+        await _session.close()
+        _session = None
+
+
+def close_session() -> None:
+    """Close the HTTP session in a synchronous context.
+
+    The Discord bot runs an event loop, but test environments or process
+    shutdown may occur without one. This helper safely closes the session in
+    whichever situation we find ourselves in and is registered via
+    :mod:`atexit` so that HTTP resources do not leak.
+    """
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        asyncio.run(_close_session())
+    else:
+        loop.create_task(_close_session())
+
+
+atexit.register(close_session)
 
 
 async def get_token() -> str:
