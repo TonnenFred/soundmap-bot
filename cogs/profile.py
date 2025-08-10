@@ -184,7 +184,7 @@ class ProfileCog(commands.Cog):
 
     # Command: add Epic via Spotify search with autocomplete
     @app_commands.command(name="addepic", description="Füge ein Epic aus Spotify hinzu")
-    @app_commands.rename(track="song", epic_number="number")
+    @app_commands.rename(track="song", epic_number="#")
     @app_commands.describe(
         track="Der Song (über Autocomplete auswählbar)",
         epic_number="Die Seriennummer des Epics",
@@ -239,7 +239,7 @@ class ProfileCog(commands.Cog):
 
     # Command: remove an Epic
     @app_commands.command(name="delepic", description="Entferne ein Epic aus deiner Sammlung")
-    @app_commands.rename(track="song", epic_number="number")
+    @app_commands.rename(track="song", epic_number="#")
     @app_commands.describe(track="Der Song (über Autocomplete auswählbar)", epic_number="Die Seriennummer des Epics")
     @app_commands.autocomplete(track=autocomplete_tracks)
     async def delepic(self, interaction: discord.Interaction, track: str, epic_number: int) -> None:
