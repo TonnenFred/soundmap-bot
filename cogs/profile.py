@@ -925,6 +925,7 @@ class ProfileCog(commands.Cog):
     @app_commands.command(name="sortartists", description="Sort your favorite artists")
     @app_commands.choices(mode=[
         app_commands.Choice(name="Name", value="name"),
+        app_commands.Choice(name="Badge", value="badge"),
         app_commands.Choice(name="Manual", value="manual"),
     ])
     async def sortartists(self, interaction: discord.Interaction, mode: app_commands.Choice[str]) -> None:
@@ -950,6 +951,35 @@ class ProfileCog(commands.Cog):
                             (idx, user_id, r["artist_id"]),
                         )
                 await self._respond(interaction, content="✅ Favorite artists sorted alphabetically.")
+            elif mode.value == "badge":
+                rows = await db.fetch_all(
+                    """
+                    SELECT ufa.artist_id
+                    FROM user_fav_artists ufa
+                    JOIN artists a ON a.artist_id = ufa.artist_id
+                    WHERE ufa.user_id=?
+                    ORDER BY CASE ufa.badge
+                        WHEN 'Shiny' THEN 7
+                        WHEN 'VIP' THEN 6
+                        WHEN 'Legendary' THEN 5
+                        WHEN 'Diamond' THEN 4
+                        WHEN 'Platinum' THEN 3
+                        WHEN 'Gold' THEN 2
+                        WHEN 'Silver' THEN 1
+                        WHEN 'Bronze' THEN 0
+                        ELSE -1
+                    END DESC,
+                    a.name COLLATE NOCASE
+                    """,
+                    (user_id,),
+                )
+                async with db.transaction():
+                    for idx, r in enumerate(rows, start=1):
+                        await db.execute(
+                            "UPDATE user_fav_artists SET position=? WHERE user_id=? AND artist_id=?",
+                            (idx, user_id, r["artist_id"]),
+                        )
+                await self._respond(interaction, content="✅ Favorite artists sorted by badge.")
             else:
                 rows = await db.fetch_all(
                     """

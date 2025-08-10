@@ -375,6 +375,42 @@ def test_sortartists_by_name(monkeypatch):
     asyncio.run(bot.close())
 
 
+def test_sortartists_by_badge(monkeypatch):
+    intents = discord.Intents.none()
+    bot = commands.Bot(command_prefix="!", intents=intents)
+    cog = ProfileCog(bot)
+
+    async def dummy_ensure_user(self, uid):
+        pass
+
+    async def dummy_fetch_all(query, params):
+        dummy_fetch_all.query = query
+        return [{"artist_id": 2}, {"artist_id": 1}]
+
+    updates = []
+
+    async def dummy_execute(query, params):
+        updates.append(params)
+
+    @asynccontextmanager
+    async def dummy_transaction():
+        yield
+
+    monkeypatch.setattr(ProfileCog, "ensure_user", dummy_ensure_user)
+    monkeypatch.setattr(db, "fetch_all", dummy_fetch_all)
+    monkeypatch.setattr(db, "execute", dummy_execute)
+    monkeypatch.setattr(db, "transaction", dummy_transaction)
+
+    interaction = DummyInteraction()
+    choice = app_commands.Choice(name="Badge", value="badge")
+    asyncio.run(ProfileCog.sortartists.callback(cog, interaction, choice))
+
+    assert "ORDER BY CASE ufa.badge" in dummy_fetch_all.query
+    assert updates == [(1, "1", 2), (2, "1", 1)]
+    assert interaction.response.message == "✅ Favorite artists sorted by badge."
+    asyncio.run(bot.close())
+
+
 def test_sortepics_by_name(monkeypatch):
     intents = discord.Intents.none()
     bot = commands.Bot(command_prefix="!", intents=intents)
