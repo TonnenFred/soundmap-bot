@@ -445,3 +445,74 @@ def test_sortwishes_by_name(monkeypatch):
     assert updates == [(1, "1", "b"), (2, "1", "a")]
     assert interaction.response.message == "✅ Wishlist sorted alphabetically."
     asyncio.run(bot.close())
+
+
+def test_autocomplete_owned_tracks(monkeypatch):
+    intents = discord.Intents.none()
+    bot = commands.Bot(command_prefix="!", intents=intents)
+    cog = ProfileCog(bot)
+
+    async def dummy_fetch_all(query, params):
+        assert params[0] == "1"
+        return [{"track_id": "t1", "title": "Song", "artist_name": "Artist"}]
+
+    monkeypatch.setattr(db, "fetch_all", dummy_fetch_all)
+
+    interaction = DummyInteraction()
+    choices = asyncio.run(ProfileCog.autocomplete_owned_tracks(cog, interaction, ""))
+
+    assert choices[0].value == "t1"
+    assert "Artist" in choices[0].name
+    asyncio.run(bot.close())
+
+
+def test_autocomplete_wishlist_tracks(monkeypatch):
+    intents = discord.Intents.none()
+    bot = commands.Bot(command_prefix="!", intents=intents)
+    cog = ProfileCog(bot)
+
+    async def dummy_fetch_all(query, params):
+        assert params[0] == "1"
+        return [{"track_id": "t2", "title": "Wish", "artist_name": "Band"}]
+
+    monkeypatch.setattr(db, "fetch_all", dummy_fetch_all)
+
+    interaction = DummyInteraction()
+    choices = asyncio.run(ProfileCog.autocomplete_wishlist_tracks(cog, interaction, ""))
+
+    assert choices[0].value == "t2"
+    assert "Band" in choices[0].name
+    asyncio.run(bot.close())
+
+
+def test_delartist_deletes_artist(monkeypatch):
+    intents = discord.Intents.none()
+    bot = commands.Bot(command_prefix="!", intents=intents)
+    cog = ProfileCog(bot)
+
+    async def dummy_ensure_user(self, uid):
+        pass
+
+    async def dummy_fetch_one(query, params):
+        return {"position": 2, "name": "Artist"}
+
+    executed = []
+
+    async def dummy_execute(query, params):
+        executed.append((query, params))
+
+    @asynccontextmanager
+    async def dummy_transaction():
+        yield
+
+    monkeypatch.setattr(ProfileCog, "ensure_user", dummy_ensure_user)
+    monkeypatch.setattr(db, "fetch_one", dummy_fetch_one)
+    monkeypatch.setattr(db, "execute", dummy_execute)
+    monkeypatch.setattr(db, "transaction", dummy_transaction)
+
+    interaction = DummyInteraction()
+    asyncio.run(ProfileCog.delartist.callback(cog, interaction, "5"))
+
+    assert executed[0][0].startswith("DELETE")
+    assert interaction.response.message == "✅ Favorite artist removed: **Artist**."
+    asyncio.run(bot.close())

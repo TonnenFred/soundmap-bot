@@ -525,6 +525,82 @@ class ProfileCog(commands.Cog):
             )
         return [app_commands.Choice(name=r["name"][:100], value=str(r["artist_id"])) for r in rows]
 
+    # Autocomplete helper for tracks the user owns as Epics
+    async def autocomplete_owned_tracks(
+        self, interaction: discord.Interaction, current: str
+    ) -> List[app_commands.Choice[str]]:
+        """Return Epic tracks owned by the invoking user for autocomplete."""
+        user_id = str(interaction.user.id)
+        term = (current or "").strip()
+        if term:
+            rows = await db.fetch_all(
+                """
+                SELECT t.track_id, t.title, t.artist_name
+                FROM user_epics ue
+                JOIN tracks t ON t.track_id = ue.track_id
+                WHERE ue.user_id=? AND (t.title LIKE ? OR t.artist_name LIKE ?)
+                ORDER BY ue.position ASC
+                LIMIT 25
+                """,
+                (user_id, f"%{term}%", f"%{term}%"),
+            )
+        else:
+            rows = await db.fetch_all(
+                """
+                SELECT t.track_id, t.title, t.artist_name
+                FROM user_epics ue
+                JOIN tracks t ON t.track_id = ue.track_id
+                WHERE ue.user_id=?
+                ORDER BY ue.position ASC
+                LIMIT 25
+                """,
+                (user_id,),
+            )
+        return [
+            app_commands.Choice(
+                name=f"{r['artist_name']} – {r['title']}"[:100], value=r["track_id"]
+            )
+            for r in rows
+        ]
+
+    # Autocomplete helper for tracks on the user's wishlist
+    async def autocomplete_wishlist_tracks(
+        self, interaction: discord.Interaction, current: str
+    ) -> List[app_commands.Choice[str]]:
+        """Return wishlist tracks of the invoking user for autocomplete."""
+        user_id = str(interaction.user.id)
+        term = (current or "").strip()
+        if term:
+            rows = await db.fetch_all(
+                """
+                SELECT t.track_id, t.title, t.artist_name
+                FROM user_wishlist_epics uwe
+                JOIN tracks t ON t.track_id = uwe.track_id
+                WHERE uwe.user_id=? AND (t.title LIKE ? OR t.artist_name LIKE ?)
+                ORDER BY uwe.position ASC
+                LIMIT 25
+                """,
+                (user_id, f"%{term}%", f"%{term}%"),
+            )
+        else:
+            rows = await db.fetch_all(
+                """
+                SELECT t.track_id, t.title, t.artist_name
+                FROM user_wishlist_epics uwe
+                JOIN tracks t ON t.track_id = uwe.track_id
+                WHERE uwe.user_id=?
+                ORDER BY uwe.position ASC
+                LIMIT 25
+                """,
+                (user_id,),
+            )
+        return [
+            app_commands.Choice(
+                name=f"{r['artist_name']} – {r['title']}"[:100], value=r["track_id"]
+            )
+            for r in rows
+        ]
+
     @app_commands.command(name="username", description="Set your Soundmap in-game username")
     @app_commands.describe(name="Your new in-game username")
     async def username(self, interaction: discord.Interaction, name: str) -> None:
@@ -598,7 +674,7 @@ class ProfileCog(commands.Cog):
     @app_commands.command(name="delepic", description="Remove an Epic from your collection")
     @app_commands.rename(track="song")
     @app_commands.describe(track="The song (selectable via autocomplete)")
-    @app_commands.autocomplete(track=autocomplete_tracks)
+    @app_commands.autocomplete(track=autocomplete_owned_tracks)
     async def delepic(self, interaction: discord.Interaction, track: str) -> None:
         user_id = str(interaction.user.id)
         # Check if the epic exists
@@ -673,7 +749,7 @@ class ProfileCog(commands.Cog):
     # Command: remove from wishlist
     @app_commands.command(name="delwish", description="Remove a song from your wishlist")
     @app_commands.rename(track="song")
-    @app_commands.autocomplete(track=autocomplete_tracks)
+    @app_commands.autocomplete(track=autocomplete_wishlist_tracks)
     async def delwish(self, interaction: discord.Interaction, track: str) -> None:
         user_id = str(interaction.user.id)
         row = await db.fetch_one(
@@ -768,37 +844,35 @@ class ProfileCog(commands.Cog):
 
     # ---------- NEW: remove favourite artist ----------
     @app_commands.command(name="delartist", description="Remove a favorite artist")
-    @app_commands.autocomplete(artist=autocomplete_artists)
+    @app_commands.autocomplete(artist=autocomplete_fav_artists)
     async def delartist(self, interaction: discord.Interaction, artist: str) -> None:
         user_id = str(interaction.user.id)
         await self.ensure_user(user_id)
 
-        # Spotify-Validierung & Kanonisierung
-        sp = await spotify.get_canonical_artist(artist)
-        if not sp:
-            await interaction.response.send_message("Artist not found on Spotify.", ephemeral=True)
+        try:
+            artist_id = int(artist)
+        except ValueError:
+            await interaction.response.send_message("Invalid artist.", ephemeral=True)
             return
-        canonical_name = sp["name"]
 
-        # Artist-ID nachschlagen
-        row = await db.fetch_one("SELECT artist_id FROM artists WHERE name=?", (canonical_name,))
+        row = await db.fetch_one(
+            """
+            SELECT ufa.position, a.name
+            FROM user_fav_artists ufa
+            JOIN artists a ON a.artist_id = ufa.artist_id
+            WHERE ufa.user_id=? AND ufa.artist_id=?
+            """,
+            (user_id, artist_id),
+        )
         if not row:
             await interaction.response.send_message("This artist is not in your list.", ephemeral=True)
             return
-        artist_id_int = row["artist_id"]
-
-        fav_row = await db.fetch_one(
-            "SELECT position FROM user_fav_artists WHERE user_id=? AND artist_id=?",
-            (user_id, artist_id_int),
-        )
-        if not fav_row:
-            await interaction.response.send_message("This artist is not in your list.", ephemeral=True)
-            return
-        pos = fav_row["position"] or 1
+        pos = row["position"] or 1
+        canonical_name = row["name"]
         async with db.transaction():
             await db.execute(
                 "DELETE FROM user_fav_artists WHERE user_id=? AND artist_id=?",
-                (user_id, artist_id_int),
+                (user_id, artist_id),
             )
             await db.execute(
                 """
