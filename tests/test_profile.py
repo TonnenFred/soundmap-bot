@@ -87,3 +87,59 @@ def test_addepic_inserts_epic(monkeypatch):
     assert dummy_execute.called
     assert "✅ Epic hinzugefügt" in interaction.response.message
     asyncio.run(bot.close())
+
+
+def test_addwish_song_not_found(monkeypatch):
+    intents = discord.Intents.none()
+    bot = commands.Bot(command_prefix="!", intents=intents)
+    cog = ProfileCog(bot)
+
+    async def dummy_get_track(track):
+        return None
+    async def dummy_ensure_user(self, uid):
+        pass
+
+    monkeypatch.setattr(spotify, "get_track", dummy_get_track)
+    monkeypatch.setattr(ProfileCog, "ensure_user", dummy_ensure_user)
+
+    interaction = DummyInteraction()
+    asyncio.run(ProfileCog.addwish.callback(cog, interaction, "abc", None))
+
+    assert interaction.response.message == "Song nicht gefunden."
+    asyncio.run(bot.close())
+
+
+def test_addwish_inserts_song(monkeypatch):
+    intents = discord.Intents.none()
+    bot = commands.Bot(command_prefix="!", intents=intents)
+    cog = ProfileCog(bot)
+
+    async def dummy_get_track(track):
+        return {"track_id": "t1", "title": "Song", "artist_name": "Artist", "url": "u"}
+
+    async def dummy_upsert_track(*args, **kwargs):
+        pass
+
+    async def dummy_fetch_one(*args, **kwargs):
+        return None
+
+    async def dummy_execute(*args, **kwargs):
+        dummy_execute.called = True
+
+    dummy_execute.called = False
+
+    async def dummy_ensure_user(self, uid):
+        pass
+
+    monkeypatch.setattr(spotify, "get_track", dummy_get_track)
+    monkeypatch.setattr(spotify, "upsert_track", dummy_upsert_track)
+    monkeypatch.setattr(db, "fetch_one", dummy_fetch_one)
+    monkeypatch.setattr(db, "execute", dummy_execute)
+    monkeypatch.setattr(ProfileCog, "ensure_user", dummy_ensure_user)
+
+    interaction = DummyInteraction()
+    asyncio.run(ProfileCog.addwish.callback(cog, interaction, "abc", None))
+
+    assert dummy_execute.called
+    assert interaction.response.message == "✅ Zur Wunschliste hinzugefügt."
+    asyncio.run(bot.close())
