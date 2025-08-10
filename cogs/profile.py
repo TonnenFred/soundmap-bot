@@ -13,7 +13,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from typing import Optional, Iterable, List
+from typing import Optional, List
 
 from core import db, spotify, util
 from core.config import GUILD_ID_DEV
