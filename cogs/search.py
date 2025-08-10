@@ -169,33 +169,50 @@ class SearchCog(commands.Cog):
         await interaction.response.send_message(embed=embed, ephemeral=(user is not None and user.id != interaction.user.id))
 
     # /findcollector command
-    @app_commands.command(name="findcollector", description="Zeigt Nutzer, die einen Artist als Favorit haben")
+    @app_commands.command(
+        name="findcollector", description="Shows users who have set an artist as favorite"
+    )
     @app_commands.autocomplete(artist=autocomplete_artists)
     async def findcollector(self, interaction: discord.Interaction, artist: str) -> None:
         # Spotify canonicalisation
         sp = await spotify.get_canonical_artist(artist)
         if not sp:
-            await interaction.response.send_message("Artist nicht gefunden.", ephemeral=True)
+            await interaction.response.send_message("Artist not found.", ephemeral=True)
             return
         canonical_name = sp["name"]
         row = await db.fetch_one("SELECT artist_id FROM artists WHERE name=?", (canonical_name,))
         if not row:
             await interaction.response.send_message(
-                "Niemand hat diesen Artist als Favorit gesetzt.", ephemeral=True
+                "Nobody has set this artist as a favorite.", ephemeral=True
             )
             return
         artist_id = row["artist_id"]
         collectors = await db.fetch_all(
-            "SELECT user_id, badge FROM user_fav_artists WHERE artist_id=? ORDER BY user_id",
+            "SELECT user_id, badge FROM user_fav_artists WHERE artist_id=?",
             (artist_id,),
         )
         if not collectors:
             await interaction.response.send_message(
-                "Niemand hat diesen Artist als Favorit gesetzt.", ephemeral=True
+                "Nobody has set this artist as a favorite.", ephemeral=True
             )
             return
+
+        badge_order = {
+            "Bronze": 0,
+            "Silver": 1,
+            "Gold": 2,
+            "Platinum": 3,
+            "Diamond": 4,
+            "Legendary": 5,
+            "VIP": 6,
+            "Shiny": 7,
+        }
+        collectors.sort(
+            key=lambda row: (badge_order.get(row["badge"], -1), int(row["user_id"])),
+            reverse=True,
+        )
         embed = discord.Embed(
-            title=f"🔍 Favorisierte Sammler für {canonical_name}",
+            title=f"🔍 Collectors of {canonical_name}",
             color=discord.Color.purple(),
         )
         lines = []
@@ -204,9 +221,9 @@ class SearchCog(commands.Cog):
             badge_emoji = BADGE_EMOJIS.get(badge, "") if badge else ""
             badge_str = f" — {badge_emoji} {badge}" if badge else ""
             lines.append(f"<@{row['user_id']}>{badge_str}")
-        more = "" if len(collectors) <= 20 else f"\n… {len(collectors) - 20} weitere"
+        more = "" if len(collectors) <= 20 else f"\n… {len(collectors) - 20} more"
         embed.add_field(
-            name=f"🌟 Favoriten-Sammler ({len(collectors)})",
+            name=f"🌟 Collectors ({len(collectors)})",
             value="\n".join(lines) + more,
             inline=False,
         )
