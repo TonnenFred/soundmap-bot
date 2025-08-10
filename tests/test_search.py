@@ -42,6 +42,7 @@ def test_findcollector_artist_not_found(monkeypatch):
     asyncio.run(SearchCog.findcollector.callback(cog, interaction, "abc"))
 
     assert interaction.response.message == "Artist not found."
+    assert interaction.response.kwargs.get("ephemeral") is True
     asyncio.run(bot.close())
 
 
@@ -65,6 +66,7 @@ def test_findcollector_no_collectors(monkeypatch):
     asyncio.run(SearchCog.findcollector.callback(cog, interaction, "Artist"))
 
     assert interaction.response.message == "Nobody has set this artist as a favorite."
+    assert interaction.response.kwargs.get("ephemeral") is True
     asyncio.run(bot.close())
 
 
@@ -98,4 +100,5 @@ def test_findcollector_lists_collectors(monkeypatch):
     assert "Gold" in lines[1]
     assert lines[2].startswith("<@1>")
     assert "Bronze" in lines[2]
+    assert interaction.response.kwargs.get("ephemeral") is True
     asyncio.run(bot.close())

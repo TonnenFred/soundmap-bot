@@ -250,7 +250,7 @@ class ProfileCog(commands.Cog):
                 await interaction.response.send_message(content, view=view, ephemeral=True)
         except Exception:
             if hasattr(interaction, "response") and hasattr(interaction.response, "send_message"):
-                await interaction.response.send_message(content, view=view)
+                await interaction.response.send_message(content, view=view, ephemeral=True)
 
     # Helper method to ensure a user row exists
     async def ensure_user(self, user_id: str) -> None:
@@ -1112,7 +1112,7 @@ class ProfileCog(commands.Cog):
         else:
             embed.add_field(name="🎯 Wishlist", value="No wishes", inline=False)
 
-        await interaction.response.send_message(embed=embed, ephemeral=(user is None))
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     # Command: wishcurrent (current song as wishlist)
     @app_commands.command(name="wishcurrent", description="Add the currently playing song (Spotify) to your wishlist")

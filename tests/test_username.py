@@ -54,6 +54,7 @@ def test_username_command_updates_db(monkeypatch):
 
     assert executed["params"] == ("Player1", "1")
     assert "Username set" in interaction.response.message
+    assert interaction.response.kwargs.get("ephemeral") is True
     asyncio.run(bot.close())
 
 
@@ -80,5 +81,6 @@ def test_profile_shows_username(monkeypatch):
     embed = interaction.response.kwargs["embed"]
     assert embed.fields[0].name == "👤 SM-Username"
     assert embed.fields[0].value == "PlayerX"
+    assert interaction.response.kwargs.get("ephemeral") is True
     asyncio.run(bot.close())
 
