@@ -616,7 +616,7 @@ class ProfileCog(commands.Cog):
         )
 
     # Command: add Epic via Spotify search with autocomplete
-    @app_commands.command(name="addepic", description="Add an Epic from Spotify")
+    @app_commands.command(name="addepic", description="Add an Epic to your collection")
     @app_commands.rename(track="song", epic_number="number")
     @app_commands.describe(
         track="The song (selectable via autocomplete)",
@@ -1130,7 +1130,7 @@ class ProfileCog(commands.Cog):
             raise
 
     # Command: show profile
-    @app_commands.command(name="profile", description="Show your Soundmap profile")
+    @app_commands.command(name="profile", description="Show your or someone else's profile")
     async def profile(self, interaction: discord.Interaction, user: Optional[discord.Member] = None) -> None:
         member = user or interaction.user
         user_id = str(member.id)
@@ -1219,7 +1219,7 @@ class ProfileCog(commands.Cog):
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     # Command: wishcurrent (current song as wishlist)
-    @app_commands.command(name="wishcurrent", description="Add the currently playing song (Spotify) to your wishlist")
+    @app_commands.command(name="wishcurrent", description="Add the currently playing song to your wishlist")
     async def wishcurrent(self, interaction: discord.Interaction) -> None:
         # Check if user has Spotify activity visible
         activity = next((a for a in interaction.user.activities if isinstance(a, discord.Spotify)), None)
