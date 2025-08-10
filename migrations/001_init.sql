@@ -21,17 +21,16 @@ CREATE TABLE IF NOT EXISTS tracks (
   url TEXT NOT NULL
 );
 
--- Epics table: stores each Epic owned by a user. Epics are identified by a Spotify track
--- and a serial number. The added_at timestamp captures the time of insertion and
--- position can be used for manual ordering. A composite primary key prevents
--- duplicate entries for the same Epic.
+-- Epics table: stores each Epic owned by a user. Each user can own at most one Epic
+-- per track. The added_at timestamp captures the time of insertion and position can
+-- be used for manual ordering.
 CREATE TABLE IF NOT EXISTS user_epics (
   user_id TEXT NOT NULL,
   track_id TEXT NOT NULL,
   epic_number INTEGER NOT NULL CHECK (epic_number > 0),
   added_at TEXT DEFAULT CURRENT_TIMESTAMP,
   position INTEGER,
-  PRIMARY KEY (user_id, track_id, epic_number),
+  PRIMARY KEY (user_id, track_id),
   FOREIGN KEY (user_id) REFERENCES users(user_id),
   FOREIGN KEY (track_id) REFERENCES tracks(track_id)
 );

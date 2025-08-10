@@ -91,6 +91,64 @@ def test_addepic_inserts_epic(monkeypatch):
     asyncio.run(bot.close())
 
 
+def test_addepic_rejects_duplicate_song(monkeypatch):
+    intents = discord.Intents.none()
+    bot = commands.Bot(command_prefix="!", intents=intents)
+    cog = ProfileCog(bot)
+
+    async def dummy_get_track(track):
+        return {"track_id": "t1", "title": "Song", "artist_name": "Artist", "url": "u"}
+
+    async def dummy_upsert_track(*args, **kwargs):
+        pass
+
+    async def dummy_fetch_one(*args, **kwargs):
+        return 1
+
+    async def dummy_ensure_user(self, uid):
+        pass
+
+    monkeypatch.setattr(spotify, "get_track", dummy_get_track)
+    monkeypatch.setattr(spotify, "upsert_track", dummy_upsert_track)
+    monkeypatch.setattr(db, "fetch_one", dummy_fetch_one)
+    monkeypatch.setattr(ProfileCog, "ensure_user", dummy_ensure_user)
+
+    interaction = DummyInteraction()
+    asyncio.run(ProfileCog.addepic.callback(cog, interaction, "abc", 5))
+
+    assert interaction.response.message == "You already own an Epic for this song."
+    asyncio.run(bot.close())
+
+
+def test_delepic_deletes_epic(monkeypatch):
+    intents = discord.Intents.none()
+    bot = commands.Bot(command_prefix="!", intents=intents)
+    cog = ProfileCog(bot)
+
+    async def dummy_fetch_one(query, params):
+        return {"position": 2}
+
+    executed = []
+
+    async def dummy_execute(query, params):
+        executed.append((query, params))
+
+    @asynccontextmanager
+    async def dummy_transaction():
+        yield
+
+    monkeypatch.setattr(db, "fetch_one", dummy_fetch_one)
+    monkeypatch.setattr(db, "execute", dummy_execute)
+    monkeypatch.setattr(db, "transaction", dummy_transaction)
+
+    interaction = DummyInteraction()
+    asyncio.run(ProfileCog.delepic.callback(cog, interaction, "t1"))
+
+    assert executed[0][0].startswith("DELETE")
+    assert interaction.response.message == "✅ Epic removed."
+    asyncio.run(bot.close())
+
+
 def test_addwish_song_not_found(monkeypatch):
     intents = discord.Intents.none()
     bot = commands.Bot(command_prefix="!", intents=intents)

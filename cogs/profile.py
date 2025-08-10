@@ -572,13 +572,13 @@ class ProfileCog(commands.Cog):
         )
         exists = await db.fetch_one(
             """
-            SELECT 1 FROM user_epics WHERE user_id=? AND track_id=? AND epic_number=?
+            SELECT 1 FROM user_epics WHERE user_id=? AND track_id=?
             """,
-            (user_id, t["track_id"], epic_number),
+            (user_id, t["track_id"]),
         )
         if exists:
             await interaction.response.send_message(
-                "You already own this Epic.", ephemeral=True
+                "You already own an Epic for this song.", ephemeral=True
             )
             return
         next_pos = await self.get_next_position(user_id)
@@ -596,15 +596,15 @@ class ProfileCog(commands.Cog):
 
     # Command: remove an Epic
     @app_commands.command(name="delepic", description="Remove an Epic from your collection")
-    @app_commands.rename(track="song", epic_number="number")
-    @app_commands.describe(track="The song (selectable via autocomplete)", epic_number="The serial number of the Epic")
+    @app_commands.rename(track="song")
+    @app_commands.describe(track="The song (selectable via autocomplete)")
     @app_commands.autocomplete(track=autocomplete_tracks)
-    async def delepic(self, interaction: discord.Interaction, track: str, epic_number: int) -> None:
+    async def delepic(self, interaction: discord.Interaction, track: str) -> None:
         user_id = str(interaction.user.id)
         # Check if the epic exists
         row = await db.fetch_one(
-            "SELECT position FROM user_epics WHERE user_id=? AND track_id=? AND epic_number=?",
-            (user_id, track, epic_number),
+            "SELECT position FROM user_epics WHERE user_id=? AND track_id=?",
+            (user_id, track),
         )
         if not row:
             await interaction.response.send_message(
@@ -616,8 +616,8 @@ class ProfileCog(commands.Cog):
         # Remove epic and shift positions
         async with db.transaction():
             await db.execute(
-                "DELETE FROM user_epics WHERE user_id=? AND track_id=? AND epic_number=?",
-                (user_id, track, epic_number),
+                "DELETE FROM user_epics WHERE user_id=? AND track_id=?",
+                (user_id, track),
             )
             # Decrement positions greater than removed
             await db.execute(
