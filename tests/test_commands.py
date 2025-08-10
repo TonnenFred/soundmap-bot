@@ -40,6 +40,7 @@ def test_commands_lists_registered_commands():
     interaction = DummyInteraction(bot_module.bot)
     asyncio.run(bot_module.list_commands.callback(interaction))
 
+    assert "**Other**" in interaction.response.message
     assert "/dummy - Dummy command" in interaction.response.message
     assert interaction.response.kwargs.get("ephemeral") is True
 
