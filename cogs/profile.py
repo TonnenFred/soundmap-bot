@@ -33,6 +33,27 @@ BADGES = [
 ]
 
 
+class UsernameModal(discord.ui.Modal):
+    """Modal dialog to set or update the Soundmap ingame username."""
+
+    username = discord.ui.TextInput(label="Ingame-Username", max_length=100)
+
+    def __init__(self, cog: "ProfileCog") -> None:
+        super().__init__(title="Soundmap-Username festlegen")
+        self.cog = cog
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        user_id = str(interaction.user.id)
+        await self.cog.ensure_user(user_id)
+        name = self.username.value.strip()
+        await db.execute(
+            "UPDATE users SET username=? WHERE user_id=?", (name, user_id)
+        )
+        await interaction.response.send_message(
+            f"✅ Username gesetzt: **{name}**", ephemeral=True
+        )
+
+
 class ProfileCog(commands.Cog):
     """Cog handling profile management commands for Epics and badges."""
 
@@ -169,6 +190,12 @@ class ProfileCog(commands.Cog):
             results = []
         # Wir geben den Namen als value zurück; DB-Insert kümmert sich um das Anlegen
         return [app_commands.Choice(name=a["name"][:100], value=a["name"]) for a in results][:25]
+
+    @app_commands.command(name="username", description="Setze deinen Soundmap-Ingame-Username")
+    async def username(self, interaction: discord.Interaction) -> None:
+        """Open a modal to set or update the ingame Soundmap username."""
+        modal = UsernameModal(self)
+        await interaction.response.send_modal(modal)
 
     # Command: add Epic via Spotify search with autocomplete
     @app_commands.command(name="addepic", description="Füge ein Epic aus Spotify hinzu")
@@ -458,8 +485,11 @@ class ProfileCog(commands.Cog):
         member = user or interaction.user
         user_id = str(member.id)
         await self.ensure_user(user_id)
-        # Fetch sort mode
-        row = await db.fetch_one("SELECT epic_sort_mode FROM users WHERE user_id=?", (user_id,))
+        # Fetch username and sort mode
+        row = await db.fetch_one(
+            "SELECT username, epic_sort_mode FROM users WHERE user_id=?", (user_id,)
+        )
+        username = row["username"] if row else None
         sort_mode = row["epic_sort_mode"] if row else "added"
         # Fetch epics sorted accordingly
         if sort_mode == "artist":
@@ -523,6 +553,8 @@ class ProfileCog(commands.Cog):
             title=f"🎵 Soundmap Profil von {member.display_name}",
             color=discord.Color.purple(),
         )
+        if username:
+            embed.insert_field_at(0, name="👤 Username", value=username, inline=False)
         # Epics list
         if epics:
             epic_lines: list[str] = []
