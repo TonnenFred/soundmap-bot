@@ -15,6 +15,10 @@ from pathlib import Path
 
 from .config import DATABASE_PATH
 
+# Resolve the path from the environment variable and ensure its directory exists
+DB_PATH = Path(DATABASE_PATH).expanduser()
+DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+
 _db: aiosqlite.Connection | None = None
 
 
@@ -25,7 +29,7 @@ async def get_db() -> aiosqlite.Connection:
     """
     global _db
     if _db is None:
-        _db = await aiosqlite.connect(DATABASE_PATH)
+        _db = await aiosqlite.connect(str(DB_PATH))
         _db.row_factory = aiosqlite.Row
     return _db
 
