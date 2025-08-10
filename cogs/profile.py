@@ -34,13 +34,13 @@ BADGES = [
 
 # Mapping of badges to their display emojis.
 BADGE_EMOJIS = {
-    "Bronze": "🟤",
-    "Silver": "⚪",
-    "Gold": "🟠",
-    "Platinum": "🟣",
-    "Diamond": "🔵",
-    "Legendary": "🔴",
-    "VIP": "🟢",
+    "Bronze": "🟫",
+    "Silver": "⬜",
+    "Gold": "🟨",
+    "Platinum": "🟪",
+    "Diamond": "🟦",
+    "Legendary": "🟥",
+    "VIP": "🟩",
     "Shiny": "✨",
 }
 
