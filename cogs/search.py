@@ -14,7 +14,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from typing import Optional, List
-from core import db, util, spotify
+from core import db, spotify
 from cogs.profile import BADGE_EMOJIS
 
 
@@ -22,37 +22,27 @@ class SearchCog(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 
-    # Autocomplete helpers (copied from ProfileCog for reuse)
-    async def autocomplete_tracks(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
+    # Autocomplete helpers
+    async def autocomplete_spotify_tracks(
+        self, interaction: discord.Interaction, current: str
+    ) -> List[app_commands.Choice[str]]:
+        """Autocomplete helper using live Spotify track search."""
         term = (current or "").strip()
-        suggestions: list[tuple[str, str]] = []
-        if term:
-            rows = await db.fetch_all(
-                """
-                SELECT track_id, title, artist_name
-                FROM tracks
-                WHERE title LIKE ? OR artist_name LIKE ?
-                ORDER BY artist_name COLLATE NOCASE ASC, title COLLATE NOCASE ASC
-                LIMIT 15
-                """,
-                (term + "%", term + "%"),
-            )
-            suggestions += [(r["track_id"], f"{r['artist_name']} – {r['title']}") for r in rows]
-            if len(suggestions) < 25:
-                rows2 = await db.fetch_all(
-                    """
-                    SELECT track_id, title, artist_name
-                    FROM tracks
-                    WHERE (title LIKE ? OR artist_name LIKE ?) AND (title NOT LIKE ? AND artist_name NOT LIKE ?)
-                    ORDER BY artist_name COLLATE NOCASE, title COLLATE NOCASE
-                    LIMIT ?
-                    """,
-                    (f"%{term}%", f"%{term}%", term + "%", term + "%", 25 - len(suggestions)),
-                )
-                suggestions += [(r["track_id"], f"{r['artist_name']} – {r['title']}") for r in rows2]
-        return [app_commands.Choice(name=label[:100], value=tid) for tid, label in suggestions[:25]]
+        try:
+            results = await spotify.search_tracks(term, limit=10) if term else []
+        except Exception:
+            results = []
+        choices = []
+        for t in results:
+            label = f"{t['artist_name']} – {t['title']}"
+            if t.get("year"):
+                label += f" ({t['year']})"
+            choices.append(app_commands.Choice(name=label[:100], value=t["track_id"]))
+        return choices[:25]
 
-    async def autocomplete_artists(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
+    async def autocomplete_artists(
+        self, interaction: discord.Interaction, current: str
+    ) -> List[app_commands.Choice[str]]:
         """Autocomplete helper for artists using live Spotify search."""
         term = (current or "").strip()
         try:
@@ -62,17 +52,33 @@ class SearchCog(commands.Cog):
         return [app_commands.Choice(name=a["name"][:100], value=a["name"]) for a in results][:25]
 
     # /findowners command
-    @app_commands.command(name="findowners", description="Zeigt Besitzer und Suchende eines Epic-Songs")
-    @app_commands.autocomplete(track=autocomplete_tracks)
+    @app_commands.command(
+        name="findowners",
+        description="Show owners and seekers of an Epic song",
+    )
+    @app_commands.rename(track="song")
+    @app_commands.describe(track="The song (selectable via autocomplete)")
+    @app_commands.autocomplete(track=autocomplete_spotify_tracks)
     async def findowners(self, interaction: discord.Interaction, track: str) -> None:
-        # Fetch track metadata
+        # Fetch track metadata from DB or Spotify
         meta = await db.fetch_one(
             "SELECT title, artist_name, url FROM tracks WHERE track_id=?",
             (track,),
         )
         if not meta:
-            await interaction.response.send_message("Song nicht gefunden.", ephemeral=True)
-            return
+            try:
+                meta = await spotify.get_track(track)
+            except Exception:
+                meta = None
+            if not meta:
+                await interaction.response.send_message(
+                    "Song not found.", ephemeral=True
+                )
+                return
+            await spotify.upsert_track(
+                meta["track_id"], meta["title"], meta["artist_name"], meta["url"]
+            )
+
         # Fetch epic owners
         owners = await db.fetch_all(
             """
@@ -89,23 +95,44 @@ class SearchCog(commands.Cog):
             (track,),
         )
         embed = discord.Embed(
-            title=f"🔎 Besitz & Wunsch für {meta['artist_name']} – {meta['title']}",
-            url=meta['url'],
+            title=f"🔎 Ownership & Wishes for {meta['artist_name']} – {meta['title']}",
+            url=meta["url"],
             color=discord.Color.blue(),
- 
         )
         if owners:
-            lines = [f"<@{row['user_id']}> — #{row['epic_number']}" for row in owners[:20]]
-            more = "" if len(owners) <= 20 else f"\n… {len(owners) - 20} weitere"
-            embed.add_field(name=f"💎 Besitzer ({len(owners)})", value="\n".join(lines) + more, inline=False)
+            lines = [
+                f"<@{row['user_id']}> — #{row['epic_number']}" for row in owners[:20]
+            ]
+            more = "" if len(owners) <= 20 else f"\n… {len(owners) - 20} more"
+            embed.add_field(
+                name=f"💎 Owners ({len(owners)})",
+                value="\n".join(lines) + more,
+                inline=False,
+            )
         else:
-            embed.add_field(name="💎 Besitzer", value="Niemand besitzt dieses Epic.", inline=False)
+            embed.add_field(
+                name="💎 Owners",
+                value="No one owns this Epic.",
+                inline=False,
+            )
         if wishers:
-            lines = [f"<@{row['user_id']}>" + (f" — _{row['note']}_" if row['note'] else "") for row in wishers[:20]]
-            more = "" if len(wishers) <= 20 else f"\n… {len(wishers) - 20} weitere"
-            embed.add_field(name=f"🎯 Suchende ({len(wishers)})", value="\n".join(lines) + more, inline=False)
+            lines = [
+                f"<@{row['user_id']}>"
+                + (f" — _{row['note']}_" if row["note"] else "")
+                for row in wishers[:20]
+            ]
+            more = "" if len(wishers) <= 20 else f"\n… {len(wishers) - 20} more"
+            embed.add_field(
+                name=f"🎯 Seekers ({len(wishers)})",
+                value="\n".join(lines) + more,
+                inline=False,
+            )
         else:
-            embed.add_field(name="🎯 Suchende", value="Niemand wünscht sich dieses Epic.", inline=False)
+            embed.add_field(
+                name="🎯 Seekers",
+                value="No one is looking for this Epic.",
+                inline=False,
+            )
         await interaction.response.send_message(embed=embed)
 
     # /tradehelp command
