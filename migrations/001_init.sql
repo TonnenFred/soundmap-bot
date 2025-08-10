@@ -5,6 +5,8 @@ CREATE TABLE IF NOT EXISTS users (
   user_id TEXT PRIMARY KEY,
   username TEXT,
   epic_sort_mode TEXT NOT NULL DEFAULT 'added',
+  artist_sort_mode TEXT NOT NULL DEFAULT 'name',
+  wish_sort_mode TEXT NOT NULL DEFAULT 'name',
   created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -43,6 +45,8 @@ CREATE TABLE IF NOT EXISTS user_wishlist_epics (
   user_id TEXT NOT NULL,
   track_id TEXT NOT NULL,
   note TEXT,
+  added_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  position INTEGER,
   PRIMARY KEY (user_id, track_id),
   FOREIGN KEY (user_id) REFERENCES users(user_id),
   FOREIGN KEY (track_id) REFERENCES tracks(track_id)
@@ -54,6 +58,8 @@ CREATE TABLE IF NOT EXISTS user_fav_artists (
   user_id TEXT NOT NULL,
   artist_id INTEGER NOT NULL,
   badge TEXT CHECK (badge IN ('Bronze','Silver','Gold','Platinum','Diamond','Legendary','VIP','Shiny')),
+  added_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  position INTEGER,
   PRIMARY KEY (user_id, artist_id),
   FOREIGN KEY (user_id) REFERENCES users(user_id),
   FOREIGN KEY (artist_id) REFERENCES artists(artist_id)
