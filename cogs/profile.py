@@ -184,6 +184,7 @@ class ProfileCog(commands.Cog):
 
     # Command: add Epic via Spotify search with autocomplete
     @app_commands.command(name="addepic", description="Füge ein Epic aus Spotify hinzu")
+    @app_commands.rename(track="song", epic_number="number")
     @app_commands.describe(
         track="Der Song (über Autocomplete auswählbar)",
         epic_number="Die Seriennummer des Epics",
@@ -237,10 +238,11 @@ class ProfileCog(commands.Cog):
         )
 
     # Command: remove an Epic
-    @app_commands.command(name="removeepic", description="Entferne ein Epic aus deiner Sammlung")
+    @app_commands.command(name="delepic", description="Entferne ein Epic aus deiner Sammlung")
+    @app_commands.rename(track="song", epic_number="number")
     @app_commands.describe(track="Der Song (über Autocomplete auswählbar)", epic_number="Die Seriennummer des Epics")
     @app_commands.autocomplete(track=autocomplete_tracks)
-    async def removeepic(self, interaction: discord.Interaction, track: str, epic_number: int) -> None:
+    async def delepic(self, interaction: discord.Interaction, track: str, epic_number: int) -> None:
         user_id = str(interaction.user.id)
         # Check if the epic exists
         row = await db.fetch_one(
@@ -276,6 +278,7 @@ class ProfileCog(commands.Cog):
 
     # Command: add a song to the wishlist via Spotify search
     @app_commands.command(name="addwish", description="Füge einen Song zu deiner Wunschliste hinzu")
+    @app_commands.rename(track="song")
     @app_commands.describe(track="Der Song (über Autocomplete auswählbar)", note="Optionale Notiz")
     @app_commands.autocomplete(track=autocomplete_spotify_tracks)
     async def addwish(self, interaction: discord.Interaction, track: str, note: Optional[str] = None) -> None:
@@ -310,9 +313,10 @@ class ProfileCog(commands.Cog):
         await interaction.response.send_message(msg, ephemeral=True)
 
     # Command: remove from wishlist
-    @app_commands.command(name="removewish_epic", description="Entferne einen Song aus deiner Wunschliste")
+    @app_commands.command(name="delwish", description="Entferne einen Song aus deiner Wunschliste")
+    @app_commands.rename(track="song")
     @app_commands.autocomplete(track=autocomplete_tracks)
-    async def removewish_epic(self, interaction: discord.Interaction, track: str) -> None:
+    async def delwish(self, interaction: discord.Interaction, track: str) -> None:
         user_id = str(interaction.user.id)
         row = await db.fetch_one(
             "SELECT 1 FROM user_wishlist_epics WHERE user_id=? AND track_id=?",
