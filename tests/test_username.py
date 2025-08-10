@@ -11,7 +11,7 @@ os.environ.setdefault("DISCORD_TOKEN", "test-token")
 os.environ.setdefault("SPOTIFY_CLIENT_ID", "cid")
 os.environ.setdefault("SPOTIFY_CLIENT_SECRET", "csecret")
 
-from cogs.profile import ProfileCog, UsernameModal
+from cogs.profile import ProfileCog
 from core import db
 
 
@@ -31,7 +31,7 @@ class DummyInteraction:
         self.response = DummyResponse()
 
 
-def test_username_modal_updates_db(monkeypatch):
+def test_username_command_updates_db(monkeypatch):
     intents = discord.Intents.none()
     bot = commands.Bot(command_prefix="!", intents=intents)
     cog = ProfileCog(bot)
@@ -50,12 +50,7 @@ def test_username_modal_updates_db(monkeypatch):
 
     interaction = DummyInteraction()
 
-    async def run_modal():
-        modal = UsernameModal(cog)
-        modal.username._value = "Player1"
-        await modal.on_submit(interaction)
-
-    asyncio.run(run_modal())
+    asyncio.run(ProfileCog.username.callback(cog, interaction, "Player1"))
 
     assert executed["params"] == ("Player1", "1")
     assert "Username gesetzt" in interaction.response.message
