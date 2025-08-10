@@ -75,6 +75,11 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 async def on_ready():
     # Initialise the database. This runs migrations if necessary.
     await db_module.init_db()
+    if db_module.DB_PATH.exists():
+        size = db_module.DB_PATH.stat().st_size
+        logging.info("Database path: %s (exists, %d bytes)", db_module.DB_PATH, size)
+    else:
+        logging.info("Database path: %s (missing)", db_module.DB_PATH)
     # Load cogs if not already loaded
     # Load only once to avoid duplication on reconnect
     if not bot.get_cog("ProfileCog"):
