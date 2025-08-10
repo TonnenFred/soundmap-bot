@@ -56,29 +56,7 @@ async def init_db() -> None:
     # executescript automatically wraps statements in a single transaction
     await db.executescript(sql)
     await db.commit()
-    # Ensure the new username column exists for the users table
-    try:
-        await db.execute("ALTER TABLE users ADD COLUMN username TEXT")
-        await db.commit()
-    except Exception:
-        # Column already exists or cannot be added; ignore
-        pass
-
-    # Additional columns for sorting and manual ordering
-    alter_statements = [
-        "ALTER TABLE users ADD COLUMN artist_sort_mode TEXT NOT NULL DEFAULT 'manual'",
-        "ALTER TABLE users ADD COLUMN wish_sort_mode TEXT NOT NULL DEFAULT 'manual'",
-        "ALTER TABLE user_wishlist_epics ADD COLUMN added_at TEXT DEFAULT CURRENT_TIMESTAMP",
-        "ALTER TABLE user_wishlist_epics ADD COLUMN position INTEGER",
-        "ALTER TABLE user_fav_artists ADD COLUMN added_at TEXT DEFAULT CURRENT_TIMESTAMP",
-        "ALTER TABLE user_fav_artists ADD COLUMN position INTEGER",
-    ]
-    for stmt in alter_statements:
-        try:
-            await db.execute(stmt)
-            await db.commit()
-        except Exception:
-            pass
+    # Schema is defined fully in the migration; no additional columns needed here.
 
 
 async def fetch_one(query: str, params: tuple | list = ()) -> aiosqlite.Row | None:
