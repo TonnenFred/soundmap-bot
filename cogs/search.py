@@ -14,7 +14,8 @@ from discord import app_commands
 from discord.ext import commands
 
 from typing import Optional, List
-from core import db, util
+from core import db, util, spotify
+from cogs.profile import BADGE_EMOJIS
 
 
 class SearchCog(commands.Cog):
@@ -50,6 +51,15 @@ class SearchCog(commands.Cog):
                 )
                 suggestions += [(r["track_id"], f"{r['artist_name']} – {r['title']}") for r in rows2]
         return [app_commands.Choice(name=label[:100], value=tid) for tid, label in suggestions[:25]]
+
+    async def autocomplete_artists(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
+        """Autocomplete helper for artists using live Spotify search."""
+        term = (current or "").strip()
+        try:
+            results = await spotify.search_artists(term, limit=10) if term else []
+        except Exception:
+            results = []
+        return [app_commands.Choice(name=a["name"][:100], value=a["name"]) for a in results][:25]
 
     # /findowners command
     @app_commands.command(name="findowners", description="Zeigt Besitzer und Suchende eines Epic-Songs")
@@ -157,3 +167,47 @@ class SearchCog(commands.Cog):
         else:
             embed.add_field(name="Sie suchen, was du besitzt", value="Keine Treffer", inline=False)
         await interaction.response.send_message(embed=embed, ephemeral=(user is not None and user.id != interaction.user.id))
+
+    # /findcollector command
+    @app_commands.command(name="findcollector", description="Zeigt Nutzer, die einen Artist als Favorit haben")
+    @app_commands.autocomplete(artist=autocomplete_artists)
+    async def findcollector(self, interaction: discord.Interaction, artist: str) -> None:
+        # Spotify canonicalisation
+        sp = await spotify.get_canonical_artist(artist)
+        if not sp:
+            await interaction.response.send_message("Artist nicht gefunden.", ephemeral=True)
+            return
+        canonical_name = sp["name"]
+        row = await db.fetch_one("SELECT artist_id FROM artists WHERE name=?", (canonical_name,))
+        if not row:
+            await interaction.response.send_message(
+                "Niemand hat diesen Artist als Favorit gesetzt.", ephemeral=True
+            )
+            return
+        artist_id = row["artist_id"]
+        collectors = await db.fetch_all(
+            "SELECT user_id, badge FROM user_fav_artists WHERE artist_id=? ORDER BY user_id",
+            (artist_id,),
+        )
+        if not collectors:
+            await interaction.response.send_message(
+                "Niemand hat diesen Artist als Favorit gesetzt.", ephemeral=True
+            )
+            return
+        embed = discord.Embed(
+            title=f"🔍 Favorisierte Sammler für {canonical_name}",
+            color=discord.Color.purple(),
+        )
+        lines = []
+        for row in collectors[:20]:
+            badge = row["badge"]
+            badge_emoji = BADGE_EMOJIS.get(badge, "") if badge else ""
+            badge_str = f" — {badge_emoji} {badge}" if badge else ""
+            lines.append(f"<@{row['user_id']}>{badge_str}")
+        more = "" if len(collectors) <= 20 else f"\n… {len(collectors) - 20} weitere"
+        embed.add_field(
+            name=f"🌟 Favoriten-Sammler ({len(collectors)})",
+            value="\n".join(lines) + more,
+            inline=False,
+        )
+        await interaction.response.send_message(embed=embed)
