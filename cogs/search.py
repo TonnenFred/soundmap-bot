@@ -9,6 +9,7 @@ are shared with the profile cog.
 
 from __future__ import annotations
 
+import difflib
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -50,6 +51,55 @@ class SearchCog(commands.Cog):
         except Exception:
             results = []
         return [app_commands.Choice(name=a["name"][:100], value=a["name"]) for a in results][:25]
+
+    async def autocomplete_usernames(
+        self, interaction: discord.Interaction, current: str
+    ) -> List[app_commands.Choice[str]]:
+        """Autocomplete helper for in-game usernames using fuzzy matching."""
+        term = (current or "").strip().lower()
+        rows = await db.fetch_all(
+            "SELECT DISTINCT username FROM users WHERE username IS NOT NULL"
+        )
+        all_names = [row["username"] for row in rows if row["username"]]
+        if term:
+            substring_matches = [n for n in all_names if term in n.lower()]
+            fuzzy_matches = difflib.get_close_matches(term, all_names, n=25, cutoff=0.4)
+            combined = substring_matches + fuzzy_matches
+        else:
+            combined = all_names
+        unique: list[str] = []
+        seen: set[str] = set()
+        for name in combined:
+            if name not in seen:
+                seen.add(name)
+                unique.append(name)
+        unique = unique[:25]
+        return [app_commands.Choice(name=name, value=name) for name in unique]
+
+    @app_commands.command(
+        name="searchuser",
+        description="Find Discord users by in-game username",
+    )
+    @app_commands.describe(username="The in-game username to search for")
+    @app_commands.autocomplete(username=autocomplete_usernames)
+    async def searchuser(self, interaction: discord.Interaction, username: str) -> None:
+        """Show Discord users that have the given in-game username."""
+        rows = await db.fetch_all(
+            "SELECT user_id FROM users WHERE username=? COLLATE NOCASE",
+            (username,),
+        )
+        if not rows:
+            await interaction.response.send_message(
+                "No Discord users found for that username.", ephemeral=True
+            )
+            return
+        mentions = [f"<@{row['user_id']}>" for row in rows]
+        embed = discord.Embed(
+            title=f"🔍 Users with username {username}",
+            color=discord.Color.blue(),
+        )
+        embed.add_field(name="Users", value="\n".join(mentions), inline=False)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     # /findowners command
     @app_commands.command(

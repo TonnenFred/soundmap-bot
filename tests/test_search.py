@@ -102,3 +102,55 @@ def test_findcollector_lists_collectors(monkeypatch):
     assert "Bronze" in lines[2]
     assert interaction.response.kwargs.get("ephemeral") is True
     asyncio.run(bot.close())
+
+
+def test_searchuser_no_match(monkeypatch):
+    bot, cog = setup_cog()
+
+    async def dummy_fetch_all(query, params):
+        return []
+
+    monkeypatch.setattr(db, "fetch_all", dummy_fetch_all)
+
+    interaction = DummyInteraction()
+    asyncio.run(SearchCog.searchuser.callback(cog, interaction, "PlayerX"))
+
+    assert interaction.response.message == "No Discord users found for that username."
+    assert interaction.response.kwargs.get("ephemeral") is True
+    asyncio.run(bot.close())
+
+
+def test_searchuser_lists_users(monkeypatch):
+    bot, cog = setup_cog()
+
+    async def dummy_fetch_all(query, params):
+        return [{"user_id": "1"}, {"user_id": "2"}]
+
+    monkeypatch.setattr(db, "fetch_all", dummy_fetch_all)
+
+    interaction = DummyInteraction()
+    asyncio.run(SearchCog.searchuser.callback(cog, interaction, "Player1"))
+
+    lines = interaction.response.kwargs["embed"].fields[0].value.split("\n")
+    assert lines == ["<@1>", "<@2>"]
+    assert interaction.response.kwargs.get("ephemeral") is True
+    asyncio.run(bot.close())
+
+
+def test_autocomplete_usernames_fuzzy(monkeypatch):
+    bot, cog = setup_cog()
+
+    async def dummy_fetch_all(query, params=()):
+        return [
+            {"username": "PlayerOne"},
+            {"username": "GamerGirl"},
+            {"username": "NoobMaster"},
+        ]
+
+    monkeypatch.setattr(db, "fetch_all", dummy_fetch_all)
+
+    interaction = DummyInteraction()
+    choices = asyncio.run(cog.autocomplete_usernames(interaction, "playeron"))
+
+    assert choices[0].name == "PlayerOne"
+    asyncio.run(bot.close())
