@@ -3,14 +3,16 @@ from pathlib import Path
 import sys
 import os
 import asyncio
-
-import discord
-from discord.ext import commands
+import importlib
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 os.environ.setdefault("DISCORD_TOKEN", "test-token")
 os.environ.setdefault("SPOTIFY_CLIENT_ID", "cid")
 os.environ.setdefault("SPOTIFY_CLIENT_SECRET", "csecret")
+
+import discord
+from discord.ext import commands
+from cogs.search import SearchCog
 
 import bot as bot_module
 
@@ -33,6 +35,8 @@ class DummyInteraction:
 
 
 def test_commands_lists_registered_commands():
+    importlib.reload(bot_module)
+
     @bot_module.bot.tree.command(name="dummy", description="Dummy command")
     async def dummy(interaction):
         pass
@@ -43,5 +47,17 @@ def test_commands_lists_registered_commands():
     assert "**Other**" in interaction.response.message
     assert "/dummy - Dummy command" in interaction.response.message
     assert interaction.response.kwargs.get("ephemeral") is True
+
+    asyncio.run(bot_module.bot.close())
+
+
+def test_commands_includes_searchuser():
+    importlib.reload(bot_module)
+    asyncio.run(bot_module.bot.add_cog(SearchCog(bot_module.bot)))
+
+    interaction = DummyInteraction(bot_module.bot)
+    asyncio.run(bot_module.list_commands.callback(interaction))
+
+    assert "/searchuser - Find Discord users by in-game username" in interaction.response.message
 
     asyncio.run(bot_module.bot.close())

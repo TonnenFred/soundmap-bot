@@ -91,7 +91,7 @@ async def list_commands(interaction: discord.Interaction) -> None:
             "favartistcurrent",
         ],
         "Sorting": ["sortepics", "sortwishes", "sortartists"],
-        "Search & Trading": ["findowners", "findcollector", "tradehelp"],
+        "Search & Trading": ["findcollector", "findowners", "searchuser", "tradehelp"],
     }
 
     lines: list[str] = []
@@ -105,7 +105,7 @@ async def list_commands(interaction: discord.Interaction) -> None:
                 used.add(name)
         if entries:
             lines.append(f"**{title}**")
-            lines.extend(entries)
+            lines.extend(sorted(entries))
             lines.append("")
 
     leftovers = [c for n, c in tree_cmds.items() if n not in used]
