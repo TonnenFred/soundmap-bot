@@ -615,6 +615,18 @@ class ProfileCog(commands.Cog):
             f"✅ Username set: **{name}**", ephemeral=True
         )
 
+    @app_commands.command(name="delusername", description="Remove your Soundmap in-game username")
+    async def delusername(self, interaction: discord.Interaction) -> None:
+        """Remove the ingame Soundmap username from your profile."""
+        user_id = str(interaction.user.id)
+        await self.ensure_user(user_id)
+        await db.execute(
+            "UPDATE users SET username=NULL WHERE user_id=?", (user_id,)
+        )
+        await interaction.response.send_message(
+            "✅ Username removed", ephemeral=True
+        )
+
     # Command: add Epic via Spotify search with autocomplete
     @app_commands.command(name="addepic", description="Add an Epic to your collection")
     @app_commands.rename(track="song", epic_number="number")

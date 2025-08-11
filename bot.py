@@ -84,7 +84,7 @@ async def list_commands(interaction: discord.Interaction) -> None:
 
     groups = {
         "General": ["commands"],
-        "Profile": ["profile", "username"],
+        "Profile": ["profile", "username", "delusername"],
         "Collection Management": [
             "addepic",
             "delepic",
