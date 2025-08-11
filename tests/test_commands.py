@@ -13,6 +13,7 @@ os.environ.setdefault("SPOTIFY_CLIENT_SECRET", "csecret")
 import discord
 from discord.ext import commands
 from cogs.search import SearchCog
+from cogs.profile import ProfileCog
 
 import bot as bot_module
 
@@ -51,13 +52,15 @@ def test_commands_lists_registered_commands():
     asyncio.run(bot_module.bot.close())
 
 
-def test_commands_includes_searchuser():
+def test_commands_includes_searchuser_and_delusername():
     importlib.reload(bot_module)
     asyncio.run(bot_module.bot.add_cog(SearchCog(bot_module.bot)))
+    asyncio.run(bot_module.bot.add_cog(ProfileCog(bot_module.bot)))
 
     interaction = DummyInteraction(bot_module.bot)
     asyncio.run(bot_module.list_commands.callback(interaction))
 
     assert "/searchuser - Find Discord users by in-game username" in interaction.response.message
+    assert "/delusername - Remove your Soundmap in-game username" in interaction.response.message
 
     asyncio.run(bot_module.bot.close())

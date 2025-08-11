@@ -58,6 +58,34 @@ def test_username_command_updates_db(monkeypatch):
     asyncio.run(bot.close())
 
 
+def test_delusername_command_clears_db(monkeypatch):
+    intents = discord.Intents.none()
+    bot = commands.Bot(command_prefix="!", intents=intents)
+    cog = ProfileCog(bot)
+
+    executed = {}
+
+    async def dummy_execute(query, params=()):
+        executed["query"] = query
+        executed["params"] = params
+
+    async def dummy_ensure_user(self, uid):
+        pass
+
+    monkeypatch.setattr(db, "execute", dummy_execute)
+    monkeypatch.setattr(ProfileCog, "ensure_user", dummy_ensure_user)
+
+    interaction = DummyInteraction()
+
+    asyncio.run(ProfileCog.delusername.callback(cog, interaction))
+
+    assert executed["query"] == "UPDATE users SET username=NULL WHERE user_id=?"
+    assert executed["params"] == ("1",)
+    assert "Username removed" in interaction.response.message
+    assert interaction.response.kwargs.get("ephemeral") is True
+    asyncio.run(bot.close())
+
+
 def test_profile_shows_username(monkeypatch):
     intents = discord.Intents.none()
     bot = commands.Bot(command_prefix="!", intents=intents)
