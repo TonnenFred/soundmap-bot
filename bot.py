@@ -63,12 +63,18 @@ def _start_health_server() -> None:
     thread = threading.Thread(target=server.serve_forever, name="health-server", daemon=True)
     thread.start()
 
-# Configure intents: we only need guilds and presences to read Spotify activity
+# Configure intents and member cache so that Spotify activities are available
 intents = discord.Intents.default()
 intents.guilds = True
+intents.members = True
 intents.presences = True  # required for wishcurrent/favartistcurrent
 
-bot = commands.Bot(command_prefix="!", intents=intents)
+# Cache members so their presence/activities are available
+cache_flags = discord.MemberCacheFlags.all()
+
+bot = commands.Bot(
+    command_prefix="!", intents=intents, member_cache_flags=cache_flags
+)
 
 
 @bot.tree.command(name="commands", description="List all available commands")
@@ -119,6 +125,9 @@ async def list_commands(interaction: discord.Interaction) -> None:
 
 @bot.event
 async def on_ready():
+    # Ensure guild member caches are populated so activities are available
+    for g in bot.guilds:
+        await g.chunk()
     # Initialise the database. This runs migrations if necessary.
     await db_module.init_db()
     logging.info("Database path: %s", db_module.DB_PATH)

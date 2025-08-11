@@ -1221,8 +1221,20 @@ class ProfileCog(commands.Cog):
     # Command: wishcurrent (current song as wishlist)
     @app_commands.command(name="wishcurrent", description="Add the currently playing song to your wishlist")
     async def wishcurrent(self, interaction: discord.Interaction) -> None:
-        # Check if user has Spotify activity visible
-        activity = next((a for a in interaction.user.activities if isinstance(a, discord.Spotify)), None)
+        # Check if the user's Spotify activity is visible. Slash command interactions
+        # may provide a bare User without cached presence data, so attempt to
+        # retrieve the Member object from the guild cache first.
+        member = getattr(interaction, "user", None)
+        if getattr(interaction, "guild", None):
+            member = interaction.guild.get_member(interaction.user.id) or interaction.user
+        activity = next(
+            (
+                a
+                for a in getattr(member, "activities", [])
+                if isinstance(a, discord.Spotify)
+            ),
+            None,
+        )
         if not activity:
             await interaction.response.send_message(
                 "I don't see a currently playing Spotify song or you've hidden your activity.",
@@ -1253,7 +1265,17 @@ class ProfileCog(commands.Cog):
     # ---------- UPDATED: favartistcurrent normalized via Spotify ----------
     @app_commands.command(name="favartistcurrent", description="Add the currently playing artist as a favorite artist")
     async def favartistcurrent(self, interaction: discord.Interaction) -> None:
-        activity = next((a for a in interaction.user.activities if isinstance(a, discord.Spotify)), None)
+        member = getattr(interaction, "user", None)
+        if getattr(interaction, "guild", None):
+            member = interaction.guild.get_member(interaction.user.id) or interaction.user
+        activity = next(
+            (
+                a
+                for a in getattr(member, "activities", [])
+                if isinstance(a, discord.Spotify)
+            ),
+            None,
+        )
         if not activity:
             await interaction.response.send_message(
                 "I don't see a currently playing Spotify song or you've hidden your activity.",
