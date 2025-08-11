@@ -61,21 +61,63 @@ class MoveEpicView(discord.ui.View):
         )
         return row["position"] if row else 0
 
+    async def _render(self) -> str:
+        row = await db.fetch_one(
+            """
+            SELECT ue.position, ue.epic_number, t.title, t.artist_name
+            FROM user_epics ue
+            JOIN tracks t ON t.track_id = ue.track_id
+            WHERE ue.user_id=? AND ue.track_id=? AND ue.epic_number=?
+            """,
+            (self.user_id, self.track_id, self.epic_number),
+        )
+        if not row:
+            return "Epic not found."
+        pos = row["position"]
+        current = f"{row['artist_name']} – {row['title']} #{row['epic_number']}"
+        above_row = await db.fetch_one(
+            """
+            SELECT ue.epic_number, t.title, t.artist_name
+            FROM user_epics ue
+            JOIN tracks t ON t.track_id = ue.track_id
+            WHERE ue.user_id=? AND ue.position=?
+            """,
+            (self.user_id, pos - 1),
+        )
+        below_row = await db.fetch_one(
+            """
+            SELECT ue.epic_number, t.title, t.artist_name
+            FROM user_epics ue
+            JOIN tracks t ON t.track_id = ue.track_id
+            WHERE ue.user_id=? AND ue.position=?
+            """,
+            (self.user_id, pos + 1),
+        )
+        above = (
+            f"{above_row['artist_name']} – {above_row['title']} #{above_row['epic_number']}"
+            if above_row
+            else "—"
+        )
+        below = (
+            f"{below_row['artist_name']} – {below_row['title']} #{below_row['epic_number']}"
+            if below_row
+            else "—"
+        )
+        return f"{pos-1}. {above}\n{pos}. **{current}**\n{pos+1}. {below}"
+
     @discord.ui.button(emoji="⬆️", style=discord.ButtonStyle.secondary)
     async def move_up(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         pos = await self._get_position()
         await self.cog.move_epic_to(self.user_id, self.track_id, self.epic_number, pos - 1)
-        pos = await self._get_position()
-        await interaction.response.edit_message(
-            content=f"Current position: {pos}", view=self
-        )
+        content = await self._render()
+        await interaction.response.edit_message(content=content, view=self)
 
     @discord.ui.button(emoji="⬇️", style=discord.ButtonStyle.secondary)
     async def move_down(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         pos = await self._get_position()
         await self.cog.move_epic_to(self.user_id, self.track_id, self.epic_number, pos + 1)
-        pos = await self._get_position()
-        await interaction.response.edit_message(content=f"Current position: {pos}", view=self)
+        content = await self._render()
+        await interaction.response.edit_message(content=content, view=self)
 
 
 class MoveArtistView(discord.ui.View):
@@ -94,19 +136,55 @@ class MoveArtistView(discord.ui.View):
         )
         return row["position"] if row else 0
 
+    async def _render(self) -> str:
+        row = await db.fetch_one(
+            """
+            SELECT ufa.position, a.name
+            FROM user_fav_artists ufa
+            JOIN artists a ON a.artist_id = ufa.artist_id
+            WHERE ufa.user_id=? AND ufa.artist_id=?
+            """,
+            (self.user_id, self.artist_id),
+        )
+        if not row:
+            return "Artist not found."
+        pos = row["position"]
+        current = row["name"]
+        above_row = await db.fetch_one(
+            """
+            SELECT a.name
+            FROM user_fav_artists ufa
+            JOIN artists a ON a.artist_id = ufa.artist_id
+            WHERE ufa.user_id=? AND ufa.position=?
+            """,
+            (self.user_id, pos - 1),
+        )
+        below_row = await db.fetch_one(
+            """
+            SELECT a.name
+            FROM user_fav_artists ufa
+            JOIN artists a ON a.artist_id = ufa.artist_id
+            WHERE ufa.user_id=? AND ufa.position=?
+            """,
+            (self.user_id, pos + 1),
+        )
+        above = above_row["name"] if above_row else "—"
+        below = below_row["name"] if below_row else "—"
+        return f"{pos-1}. {above}\n{pos}. **{current}**\n{pos+1}. {below}"
+
     @discord.ui.button(emoji="⬆️", style=discord.ButtonStyle.secondary)
     async def move_up(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         pos = await self._get_position()
         await self.cog.move_artist_to(self.user_id, self.artist_id, pos - 1)
-        pos = await self._get_position()
-        await interaction.response.edit_message(content=f"Current position: {pos}", view=self)
+        content = await self._render()
+        await interaction.response.edit_message(content=content, view=self)
 
     @discord.ui.button(emoji="⬇️", style=discord.ButtonStyle.secondary)
     async def move_down(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         pos = await self._get_position()
         await self.cog.move_artist_to(self.user_id, self.artist_id, pos + 1)
-        pos = await self._get_position()
-        await interaction.response.edit_message(content=f"Current position: {pos}", view=self)
+        content = await self._render()
+        await interaction.response.edit_message(content=content, view=self)
 
 
 class MoveWishView(discord.ui.View):
@@ -125,92 +203,61 @@ class MoveWishView(discord.ui.View):
         )
         return row["position"] if row else 0
 
+    async def _render(self) -> str:
+        row = await db.fetch_one(
+            """
+            SELECT uwe.position, t.title, t.artist_name
+            FROM user_wishlist_epics uwe
+            JOIN tracks t ON t.track_id = uwe.track_id
+            WHERE uwe.user_id=? AND uwe.track_id=?
+            """,
+            (self.user_id, self.track_id),
+        )
+        if not row:
+            return "Wish not found."
+        pos = row["position"]
+        current = f"{row['artist_name']} – {row['title']}"
+        above_row = await db.fetch_one(
+            """
+            SELECT t.title, t.artist_name
+            FROM user_wishlist_epics uwe
+            JOIN tracks t ON t.track_id = uwe.track_id
+            WHERE uwe.user_id=? AND uwe.position=?
+            """,
+            (self.user_id, pos - 1),
+        )
+        below_row = await db.fetch_one(
+            """
+            SELECT t.title, t.artist_name
+            FROM user_wishlist_epics uwe
+            JOIN tracks t ON t.track_id = uwe.track_id
+            WHERE uwe.user_id=? AND uwe.position=?
+            """,
+            (self.user_id, pos + 1),
+        )
+        above = (
+            f"{above_row['artist_name']} – {above_row['title']}" if above_row else "—"
+        )
+        below = (
+            f"{below_row['artist_name']} – {below_row['title']}" if below_row else "—"
+        )
+        return f"{pos-1}. {above}\n{pos}. **{current}**\n{pos+1}. {below}"
+
     @discord.ui.button(emoji="⬆️", style=discord.ButtonStyle.secondary)
     async def move_up(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         pos = await self._get_position()
         await self.cog.move_wish_to(self.user_id, self.track_id, pos - 1)
-        pos = await self._get_position()
-        await interaction.response.edit_message(content=f"Current position: {pos}", view=self)
+        content = await self._render()
+        await interaction.response.edit_message(content=content, view=self)
 
     @discord.ui.button(emoji="⬇️", style=discord.ButtonStyle.secondary)
     async def move_down(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         pos = await self._get_position()
         await self.cog.move_wish_to(self.user_id, self.track_id, pos + 1)
-        pos = await self._get_position()
-        await interaction.response.edit_message(content=f"Current position: {pos}", view=self)
+        content = await self._render()
+        await interaction.response.edit_message(content=content, view=self)
 
 
-class ArtistSelect(discord.ui.Select):
-    """Dropdown for choosing an artist to manually reorder."""
-
-    def __init__(self, cog: "ProfileCog", user_id: str, options: list[discord.SelectOption]) -> None:
-        super().__init__(placeholder="Select an artist", options=options)
-        self.cog = cog
-        self.user_id = user_id
-
-    async def callback(self, interaction: discord.Interaction) -> None:
-        artist_id = int(self.values[0])
-        view = MoveArtistView(self.cog, self.user_id, artist_id)
-        pos = await view._get_position()
-        await interaction.response.edit_message(
-            content=f"Current position: {pos}. Use the buttons to move the artist.",
-            view=view,
-        )
-
-
-class SelectArtistView(discord.ui.View):
-    def __init__(self, cog: "ProfileCog", user_id: str, options: list[discord.SelectOption]) -> None:
-        super().__init__()
-        self.add_item(ArtistSelect(cog, user_id, options))
-
-
-class EpicSelect(discord.ui.Select):
-    """Dropdown for choosing an Epic to manually reorder."""
-
-    def __init__(self, cog: "ProfileCog", user_id: str, options: list[discord.SelectOption]) -> None:
-        super().__init__(placeholder="Select an Epic", options=options)
-        self.cog = cog
-        self.user_id = user_id
-
-    async def callback(self, interaction: discord.Interaction) -> None:
-        track_id, epic_number = self.values[0].split("|")
-        epic_number = int(epic_number)
-        view = MoveEpicView(self.cog, self.user_id, track_id, epic_number)
-        pos = await view._get_position()
-        await interaction.response.edit_message(
-            content=f"Current position: {pos}. Use the buttons to move the Epic.",
-            view=view,
-        )
-
-
-class SelectEpicView(discord.ui.View):
-    def __init__(self, cog: "ProfileCog", user_id: str, options: list[discord.SelectOption]) -> None:
-        super().__init__()
-        self.add_item(EpicSelect(cog, user_id, options))
-
-
-class WishSelect(discord.ui.Select):
-    """Dropdown for choosing a wishlist item to manually reorder."""
-
-    def __init__(self, cog: "ProfileCog", user_id: str, options: list[discord.SelectOption]) -> None:
-        super().__init__(placeholder="Select a wish", options=options)
-        self.cog = cog
-        self.user_id = user_id
-
-    async def callback(self, interaction: discord.Interaction) -> None:
-        track_id = self.values[0]
-        view = MoveWishView(self.cog, self.user_id, track_id)
-        pos = await view._get_position()
-        await interaction.response.edit_message(
-            content=f"Current position: {pos}. Use the buttons to move the wish.",
-            view=view,
-        )
-
-
-class SelectWishView(discord.ui.View):
-    def __init__(self, cog: "ProfileCog", user_id: str, options: list[discord.SelectOption]) -> None:
-        super().__init__()
-        self.add_item(WishSelect(cog, user_id, options))
 
 
 class ProfileCog(commands.Cog):
@@ -559,6 +606,45 @@ class ProfileCog(commands.Cog):
         return [
             app_commands.Choice(
                 name=f"{r['artist_name']} – {r['title']}"[:100], value=r["track_id"]
+            )
+            for r in rows
+        ]
+
+    # Autocomplete helper for specific Epics (track + number) the user owns
+    async def autocomplete_owned_epics(
+        self, interaction: discord.Interaction, current: str
+    ) -> List[app_commands.Choice[str]]:
+        """Return Epic entries of the invoking user for autocomplete."""
+        user_id = str(interaction.user.id)
+        term = (current or "").strip()
+        if term:
+            rows = await db.fetch_all(
+                """
+                SELECT ue.track_id, ue.epic_number, t.title, t.artist_name
+                FROM user_epics ue
+                JOIN tracks t ON t.track_id = ue.track_id
+                WHERE ue.user_id=? AND (t.title LIKE ? OR t.artist_name LIKE ?)
+                ORDER BY ue.position ASC
+                LIMIT 25
+                """,
+                (user_id, f"%{term}%", f"%{term}%"),
+            )
+        else:
+            rows = await db.fetch_all(
+                """
+                SELECT ue.track_id, ue.epic_number, t.title, t.artist_name
+                FROM user_epics ue
+                JOIN tracks t ON t.track_id = ue.track_id
+                WHERE ue.user_id=?
+                ORDER BY ue.position ASC
+                LIMIT 25
+                """,
+                (user_id,),
+            )
+        return [
+            app_commands.Choice(
+                name=f"{r['artist_name']} – {r['title']} #{r['epic_number']}"[:100],
+                value=f"{r['track_id']}|{r['epic_number']}",
             )
             for r in rows
         ]
@@ -940,7 +1026,13 @@ class ProfileCog(commands.Cog):
         app_commands.Choice(name="Badge", value="badge"),
         app_commands.Choice(name="Manual", value="manual"),
     ])
-    async def sortartists(self, interaction: discord.Interaction, mode: app_commands.Choice[str]) -> None:
+    @app_commands.autocomplete(artist=autocomplete_fav_artists)
+    async def sortartists(
+        self,
+        interaction: discord.Interaction,
+        mode: app_commands.Choice[str],
+        artist: Optional[str] = None,
+    ) -> None:
         user_id = str(interaction.user.id)
         await self.ensure_user(user_id)
         await self._safe_defer(interaction, ephemeral=True)
@@ -993,29 +1085,32 @@ class ProfileCog(commands.Cog):
                         )
                 await self._respond(interaction, content="✅ Favorite artists sorted by badge.")
             else:
-                rows = await db.fetch_all(
-                    """
-                    SELECT ufa.artist_id, a.name
-                    FROM user_fav_artists ufa
-                    JOIN artists a ON a.artist_id = ufa.artist_id
-                    WHERE ufa.user_id=?
-                    ORDER BY ufa.position ASC
-                    """,
-                    (user_id,),
-                )
-                if not rows:
-                    await self._respond(interaction, content="No favorite artists to sort.")
+                if not artist:
+                    await self._respond(
+                        interaction,
+                        content="Provide an artist to move using autocomplete.",
+                    )
                     return
-                options = [
-                    discord.SelectOption(label=r["name"][:100], value=str(r["artist_id"]))
-                    for r in rows[:25]
-                ]
-                view = SelectArtistView(self, user_id, options)
-                await self._respond(
-                    interaction,
-                    content="Select the artist to move.",
-                    view=view,
+                try:
+                    artist_id = int(artist)
+                except ValueError:
+                    await self._respond(interaction, content="Invalid artist.")
+                    return
+                row = await db.fetch_one(
+                    """
+                    SELECT position FROM user_fav_artists
+                    WHERE user_id=? AND artist_id=?
+                    """,
+                    (user_id, artist_id),
                 )
+                if not row:
+                    await self._respond(
+                        interaction, content="This artist is not in your favourites."
+                    )
+                    return
+                view = MoveArtistView(self, user_id, artist_id)
+                content = await view._render()
+                await self._respond(interaction, content=content, view=view)
         except Exception as e:
             await self._respond(
                 interaction, content=f"❌ Error while sorting artists: {e}"
@@ -1027,7 +1122,13 @@ class ProfileCog(commands.Cog):
         app_commands.Choice(name="Name", value="name"),
         app_commands.Choice(name="Manual", value="manual"),
     ])
-    async def sortepics(self, interaction: discord.Interaction, mode: app_commands.Choice[str]) -> None:
+    @app_commands.autocomplete(epic=autocomplete_owned_epics)
+    async def sortepics(
+        self,
+        interaction: discord.Interaction,
+        mode: app_commands.Choice[str],
+        epic: Optional[str] = None,
+    ) -> None:
         user_id = str(interaction.user.id)
         await self.ensure_user(user_id)
         await self._safe_defer(interaction, ephemeral=True)
@@ -1055,28 +1156,32 @@ class ProfileCog(commands.Cog):
                         )
                 await self._respond(interaction, content="✅ Epics sorted alphabetically.")
             else:
-                rows = await db.fetch_all(
-                    """
-                    SELECT ue.track_id, ue.epic_number, t.title, t.artist_name
-                    FROM user_epics ue
-                    JOIN tracks t ON t.track_id = ue.track_id
-                    WHERE ue.user_id=?
-                    ORDER BY ue.position ASC
-                    """,
-                    (user_id,),
-                )
-                if not rows:
-                    await self._respond(interaction, content="No Epics to sort.")
+                if not epic:
+                    await self._respond(
+                        interaction, content="Provide an Epic to move using autocomplete."
+                    )
                     return
-                options: list[discord.SelectOption] = []
-                for r in rows[:25]:
-                    label = f"{r['artist_name']} – {r['title']} #{r['epic_number']}"
-                    value = f"{r['track_id']}|{r['epic_number']}"
-                    options.append(discord.SelectOption(label=label[:100], value=value))
-                view = SelectEpicView(self, user_id, options)
-                await self._respond(
-                    interaction, content="Select the Epic to move.", view=view
+                try:
+                    track_id, epic_str = epic.split("|")
+                    epic_number = int(epic_str)
+                except Exception:
+                    await self._respond(interaction, content="Invalid Epic.")
+                    return
+                row = await db.fetch_one(
+                    """
+                    SELECT position FROM user_epics
+                    WHERE user_id=? AND track_id=? AND epic_number=?
+                    """,
+                    (user_id, track_id, epic_number),
                 )
+                if not row:
+                    await self._respond(
+                        interaction, content="This Epic is not in your collection."
+                    )
+                    return
+                view = MoveEpicView(self, user_id, track_id, epic_number)
+                content = await view._render()
+                await self._respond(interaction, content=content, view=view)
         except Exception as e:
             await self._respond(
                 interaction, content=f"❌ Error while sorting epics: {e}"
@@ -1088,7 +1193,13 @@ class ProfileCog(commands.Cog):
         app_commands.Choice(name="Name", value="name"),
         app_commands.Choice(name="Manual", value="manual"),
     ])
-    async def sortwishes(self, interaction: discord.Interaction, mode: app_commands.Choice[str]) -> None:
+    @app_commands.autocomplete(track=autocomplete_wishlist_tracks)
+    async def sortwishes(
+        self,
+        interaction: discord.Interaction,
+        mode: app_commands.Choice[str],
+        track: Optional[str] = None,
+    ) -> None:
         user_id = str(interaction.user.id)
         await self.ensure_user(user_id)
         await self._safe_defer(interaction, ephemeral=True)
@@ -1112,29 +1223,27 @@ class ProfileCog(commands.Cog):
                         )
                 await self._respond(interaction, content="✅ Wishlist sorted alphabetically.")
             else:
-                rows = await db.fetch_all(
-                    """
-                    SELECT uw.track_id, t.title, t.artist_name
-                    FROM user_wishlist_epics uw
-                    JOIN tracks t ON t.track_id = uw.track_id
-                    WHERE uw.user_id=?
-                    ORDER BY uw.position ASC
-                    """,
-                    (user_id,),
-                )
-                if not rows:
-                    await self._respond(interaction, content="No wishes to sort.")
-                    return
-                options = [
-                    discord.SelectOption(
-                        label=f"{r['artist_name']} – {r['title']}"[:100], value=r["track_id"]
+                if not track:
+                    await self._respond(
+                        interaction, content="Provide a wish to move using autocomplete."
                     )
-                    for r in rows[:25]
-                ]
-                view = SelectWishView(self, user_id, options)
-                await self._respond(
-                    interaction, content="Select the wish to move.", view=view
+                    return
+                track_id = track
+                row = await db.fetch_one(
+                    """
+                    SELECT position FROM user_wishlist_epics
+                    WHERE user_id=? AND track_id=?
+                    """,
+                    (user_id, track_id),
                 )
+                if not row:
+                    await self._respond(
+                        interaction, content="This wish is not in your wishlist."
+                    )
+                    return
+                view = MoveWishView(self, user_id, track_id)
+                content = await view._render()
+                await self._respond(interaction, content=content, view=view)
         except Exception as e:
             await self._respond(
                 interaction, content=f"❌ Error while sorting wishlist: {e}"

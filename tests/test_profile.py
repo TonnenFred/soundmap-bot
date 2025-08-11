@@ -367,7 +367,7 @@ def test_sortartists_by_name(monkeypatch):
 
     interaction = DummyInteraction()
     choice = app_commands.Choice(name="Name", value="name")
-    asyncio.run(ProfileCog.sortartists.callback(cog, interaction, choice))
+    asyncio.run(ProfileCog.sortartists.callback(cog, interaction, choice, None))
 
     assert "ORDER BY a.name" in dummy_fetch_all.query
     assert updates == [(1, "1", 2), (2, "1", 1)]
@@ -403,7 +403,7 @@ def test_sortartists_by_badge(monkeypatch):
 
     interaction = DummyInteraction()
     choice = app_commands.Choice(name="Badge", value="badge")
-    asyncio.run(ProfileCog.sortartists.callback(cog, interaction, choice))
+    asyncio.run(ProfileCog.sortartists.callback(cog, interaction, choice, None))
 
     assert "ORDER BY CASE ufa.badge" in dummy_fetch_all.query
     assert updates == [(1, "1", 2), (2, "1", 1)]
@@ -439,7 +439,7 @@ def test_sortepics_by_name(monkeypatch):
 
     interaction = DummyInteraction()
     choice = app_commands.Choice(name="Name", value="name")
-    asyncio.run(ProfileCog.sortepics.callback(cog, interaction, choice))
+    asyncio.run(ProfileCog.sortepics.callback(cog, interaction, choice, None))
 
     assert "ORDER BY t.artist_name" in dummy_fetch_all.query
     assert updates == [(1, "1", "b", 2), (2, "1", "a", 1)]
@@ -475,7 +475,7 @@ def test_sortwishes_by_name(monkeypatch):
 
     interaction = DummyInteraction()
     choice = app_commands.Choice(name="Name", value="name")
-    asyncio.run(ProfileCog.sortwishes.callback(cog, interaction, choice))
+    asyncio.run(ProfileCog.sortwishes.callback(cog, interaction, choice, None))
 
     assert "ORDER BY t.artist_name" in dummy_fetch_all.query
     assert updates == [(1, "1", "b"), (2, "1", "a")]
@@ -518,6 +518,32 @@ def test_autocomplete_wishlist_tracks(monkeypatch):
 
     assert choices[0].value == "t2"
     assert "Band" in choices[0].name
+    asyncio.run(bot.close())
+
+
+def test_autocomplete_owned_epics(monkeypatch):
+    intents = discord.Intents.none()
+    bot = commands.Bot(command_prefix="!", intents=intents)
+    cog = ProfileCog(bot)
+
+    async def dummy_fetch_all(query, params):
+        assert params[0] == "1"
+        return [
+            {
+                "track_id": "t3",
+                "epic_number": 7,
+                "title": "Song",
+                "artist_name": "Artist",
+            }
+        ]
+
+    monkeypatch.setattr(db, "fetch_all", dummy_fetch_all)
+
+    interaction = DummyInteraction()
+    choices = asyncio.run(ProfileCog.autocomplete_owned_epics(cog, interaction, ""))
+
+    assert choices[0].value == "t3|7"
+    assert "Artist" in choices[0].name
     asyncio.run(bot.close())
 
 
